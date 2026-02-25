@@ -49,7 +49,7 @@ export const deductStockForMenuItem = async (menuItemId, quantityOrdered, refere
 
       const requiredQty = ingredient.quantityRequired * quantityOrdered;
 
-      // Check current stock
+      // Check current stock (reuse logic similar to getCurrentStock)
       const transactions = await InventoryTransaction.find({
         rawMaterial: ingredient.rawMaterial,
         restaurant: restaurantId
@@ -58,8 +58,12 @@ export const deductStockForMenuItem = async (menuItemId, quantityOrdered, refere
       let stock = 0;
 
       transactions.forEach(t => {
-        if (t.type === "IN") stock += t.quantity;
-        if (t.type === "OUT" || t.type === "WASTAGE") stock -= t.quantity;
+        if (t.type === "PURCHASE" || t.type === "IN" || t.type === "TRANSFER_IN") stock += t.quantity;
+        if (
+          t.type === "SALE_DEDUCTION" || t.type === "OUT" ||
+          t.type === "WASTAGE" || t.type === "TRANSFER_OUT" ||
+          t.type === "PURCHASE_RETURN"
+        ) stock -= t.quantity;
         if (t.type === "ADJUSTMENT") stock += t.quantity;
       });
 
@@ -70,7 +74,7 @@ export const deductStockForMenuItem = async (menuItemId, quantityOrdered, refere
       await InventoryTransaction.create({
         restaurant: restaurantId,
         rawMaterial: ingredient.rawMaterial,
-        type: "OUT",
+        type: "SALE_DEDUCTION", // use sale deduction for consistency
         quantity: requiredQty,
         referenceId,
         referenceModel: "Order"

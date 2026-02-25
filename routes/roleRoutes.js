@@ -11,10 +11,10 @@ const router = express.Router();
 
 // Routes
 
-router.post("/create-role", auth, checkPermission("roles.create"), createRole);
+router.post("/create-role", auth, checkPermission("role.create"), createRole);
 router.get("/get-all-roles", auth, getRoles);
-router.put("/update-role/:id", auth, checkPermission("roles.update"), updateRole);
-router.delete("/delete-role/:id", auth, checkPermission("roles.delete"), deleteRole);
+router.put("/update-role/:id", auth, checkPermission("role.update"), updateRole);
+router.delete("/delete-role/:id", auth, checkPermission("role.delete"), deleteRole);
 
 router.post("/role-assign", assignPermissionToRole);
 router.get("/get-all-role-assign",auth, getAllRolePermissions);

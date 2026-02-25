@@ -14,7 +14,8 @@ export const getAllInventoryTransactions = async (req, res) => {
     }
 
     const transactions = await InventoryTransaction.find({ restaurant: restaurantId })
-      .populate("rawMaterial", "name unit averageCost")
+      .populate("rawMaterial", "name purchaseUnit consumptionUnit averageCost")
+      .populate("createdBy", "name email")
       .sort({ createdAt: -1 });
 
     res.status(200).json({
@@ -35,7 +36,7 @@ export const getAllInventoryTransactions = async (req, res) => {
 // Create Inventory Transaction
 export const createInventoryTransaction = async (req, res) => {
   try {
-    const { rawMaterial, type, quantity, referenceId, referenceModel, notes } = req.body;
+    const { rawMaterial, type, quantity, unit, referenceId, referenceModel, reason, notes } = req.body;
     const restaurantId = req.user.restaurant || req.body.restaurant;
     
     if (!restaurantId) {
@@ -53,7 +54,13 @@ export const createInventoryTransaction = async (req, res) => {
     }
 
     // Validate transaction type
-    const validTypes = ["IN", "OUT", "ADJUSTMENT", "WASTAGE"];
+    const validTypes = [
+      "PURCHASE", "IN",             
+      "SALE_DEDUCTION", "OUT",      
+      "ADJUSTMENT", "WASTAGE",     
+      "TRANSFER_IN", "TRANSFER_OUT",
+      "PURCHASE_RETURN"
+    ];
     if (!validTypes.includes(type)) {
       return res.status(400).json({ 
         success: false, 
@@ -80,13 +87,17 @@ export const createInventoryTransaction = async (req, res) => {
       rawMaterial,
       type,
       quantity,
+      unit: unit || 'consumption',
       referenceId: referenceId || undefined,
       referenceModel: referenceModel || undefined,
-      notes: notes || undefined
+      reason: reason || undefined,
+      notes: notes || undefined,
+      createdBy: req.user?._id
     });
 
     // Populate response
-    await transaction.populate("rawMaterial", "name unit averageCost");
+    await transaction.populate("rawMaterial", "name purchaseUnit consumptionUnit averageCost");
+    await transaction.populate("createdBy", "name email");
 
     res.status(201).json({
       success: true,
@@ -106,13 +117,22 @@ export const createInventoryTransaction = async (req, res) => {
 // Get Current Stock of Raw Material
 export const getCurrentStock = async (req, res) => {
   try {
-    const { rawMaterialId } = req.params;
+    
+    // allow lookup either via body or URL parameter (id or rawMaterialId)
+    let rawMaterialId = req.body?.rawMaterialId || req.params?.rawMaterialId || req.params?.id;
     const restaurantId = req.user.restaurant || req.body.restaurant;
     
     if (!restaurantId) {
       return res.status(400).json({ 
         success: false, 
         message: "Restaurant ID is required" 
+      });
+    }
+
+    if (!rawMaterialId) {
+      return res.status(400).json({
+        success: false,
+        message: "rawMaterialId is required"
       });
     }
 
@@ -124,8 +144,20 @@ export const getCurrentStock = async (req, res) => {
     let stock = 0;
 
     transactions.forEach(t => {
-      if (t.type === "IN") stock += t.quantity;
-      if (t.type === "OUT" || t.type === "WASTAGE") stock -= t.quantity;
+      // incoming types
+      if (t.type === "PURCHASE" || t.type === "IN" || t.type === "TRANSFER_IN") {
+        stock += t.quantity;
+      }
+      // outgoing types
+      if (
+        t.type === "SALE_DEDUCTION" ||
+        t.type === "OUT" ||
+        t.type === "WASTAGE" ||
+        t.type === "TRANSFER_OUT" ||
+        t.type === "PURCHASE_RETURN"
+      ) {
+        stock -= t.quantity;
+      }
       if (t.type === "ADJUSTMENT") stock += t.quantity;
     });
 
@@ -174,11 +206,13 @@ export const addStockAdjustment = async (req, res) => {
       rawMaterial,
       type: "ADJUSTMENT",
       quantity,
-      note
+      note,
+      createdBy: req.user?._id
     });
 
     // Populate response
-    await transaction.populate("rawMaterial", "name unit averageCost");
+    await transaction.populate("rawMaterial", "name purchaseUnit consumptionUnit averageCost");
+    await transaction.populate("createdBy", "name email");
 
     res.status(201).json({
       success: true,
