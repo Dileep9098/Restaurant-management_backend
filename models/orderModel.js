@@ -174,9 +174,13 @@ const orderSchema = new mongoose.Schema({
     ref: "Table"
   },
 
-  customer: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "Customer"
+  customerName: {
+    type: String,
+    default: "Guest"
+  },
+  waiterName: {
+    type: String,
+    default: "Waiter"
   },
 
   createdBy: {
@@ -222,7 +226,7 @@ const orderSchema = new mongoose.Schema({
   },
   orderAccessToken: {
     type: String,
-    required: true
+    // required: true
   },
 
   preparationTime: {
@@ -234,7 +238,10 @@ const orderSchema = new mongoose.Schema({
     type: String,
     enum: ["PENDING", "PAID", "FAILED"],
     default: "PENDING"
-  }
+  },
+  tokenBillNumber: {
+    type: String,
+  },
 
 }, { timestamps: true });
 

@@ -82,6 +82,7 @@ export const createInventoryTransaction = async (req, res) => {
     }
 
     // Create transaction
+    // optionally convert quantity to consumption before storing? we store original quantity but keep unit
     const transaction = await InventoryTransaction.create({
       restaurant: restaurantId,
       rawMaterial,
@@ -136,17 +137,29 @@ export const getCurrentStock = async (req, res) => {
       });
     }
 
+    // pull raw material info so we can convert quantities based on unit
     const transactions = await InventoryTransaction.find({
       rawMaterial: rawMaterialId,
       restaurant: restaurantId
-    });
+    }).populate("rawMaterial", "conversionRate purchaseUnit consumptionUnit");
 
     let stock = 0;
 
     transactions.forEach(t => {
+      // determine effective quantity in *consumption* units
+      let qty = Number(t.quantity) || 0;
+      const mat = t.rawMaterial;
+      if (t.unit && mat && mat.conversionRate) {
+        // assume conversionRate defines how many consumption units equal one purchase unit
+        if (t.unit === "purchase") {
+          qty = qty * mat.conversionRate;
+        }
+        // if transaction already in consumption or unknown unit, leave qty unchanged
+      }
+
       // incoming types
       if (t.type === "PURCHASE" || t.type === "IN" || t.type === "TRANSFER_IN") {
-        stock += t.quantity;
+        stock += qty;
       }
       // outgoing types
       if (
@@ -156,9 +169,9 @@ export const getCurrentStock = async (req, res) => {
         t.type === "TRANSFER_OUT" ||
         t.type === "PURCHASE_RETURN"
       ) {
-        stock -= t.quantity;
+        stock -= qty;
       }
-      if (t.type === "ADJUSTMENT") stock += t.quantity;
+      if (t.type === "ADJUSTMENT") stock += qty;
     });
 
     res.status(200).json({
@@ -178,7 +191,7 @@ export const getCurrentStock = async (req, res) => {
 // Add Manual Stock Adjustment
 export const addStockAdjustment = async (req, res) => {
   try {
-    const { rawMaterial, quantity, note } = req.body;
+    const { rawMaterial, quantity, note, unit } = req.body;
     const restaurantId = req.user.restaurant || req.body.restaurant;
     
     if (!restaurantId) {
@@ -206,6 +219,7 @@ export const addStockAdjustment = async (req, res) => {
       rawMaterial,
       type: "ADJUSTMENT",
       quantity,
+      unit: unit || 'consumption',
       note,
       createdBy: req.user?._id
     });

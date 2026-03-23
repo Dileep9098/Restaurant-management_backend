@@ -3,6 +3,8 @@
 // import SimData from "../models/SimDataModel.js";
 // import User from "../models/userModel.js";
 // import { io } from "../server.js";
+import fs from "fs";
+import path from "path";
 
 
 // const generateOrderNumber = async () => {
@@ -680,11 +682,13 @@ import Table from "../models/tableModel.js";
 import Variant from "../models/varianModel.js";
 import crypto from "crypto";
 import PDFDocument from "pdfkit";
-import fs from "fs";
+
 
 import puppeteerCore from "puppeteer-core";
 import chromium from "@sparticuz/chromium";
 import { getIO } from "../socket/socket.js";
+
+
 // import { io } from "../server.js";
 
 // getIO
@@ -979,7 +983,10 @@ export const placeOrder = async (req, res) => {
       orderType,
       subTotal,
       taxAmount,
-      grandTotal
+      grandTotal,
+      customerName,
+      waiterName,
+      tokenBillNumber
     } = req.body;
 
     const existingToken = req.cookies?.orderToken;
@@ -1095,6 +1102,9 @@ export const placeOrder = async (req, res) => {
     const orderNumber = `#ORDER${String(nextNumber).padStart(4, "0")}`;
     const orderAccessToken = crypto.randomBytes(32).toString("hex");
 
+    // Determine order status based on tokenBillNumber
+    const orderStatus = tokenBillNumber ? "COMPLETED" : "NEW";
+
     const newOrder = await Order.create({
       orderNumber,
       restaurant,
@@ -1104,10 +1114,17 @@ export const placeOrder = async (req, res) => {
       subTotal: Number(subTotal),
       taxAmount: Number(taxAmount),
       grandTotal: Number(grandTotal),
-      orderAccessToken
+      orderAccessToken,
+      customerName: customerName || "Guest",
+      waiterName: waiterName || "Waiter",
+      orderStatus,
+      tokenBillNumber: tokenBillNumber || null
     });
 
-    if (table) {
+    // If it's a token bill order, free the table
+    if (tokenBillNumber && table) {
+      await Table.findByIdAndUpdate(table, { status: "free" });
+    } else if (table) {
       await Table.findByIdAndUpdate(table, { status: "occupied" });
     }
 
@@ -1117,7 +1134,9 @@ export const placeOrder = async (req, res) => {
     console.log("🔥 Order data being emitted:", {
       orderId: newOrder._id,
       orderNumber: newOrder.orderNumber,
-      restaurantId: restaurant
+      restaurantId: restaurant,
+      orderStatus: newOrder.orderStatus,
+      tokenBillNumber: newOrder.tokenBillNumber
     });
     io.to(roomName).emit("newOrder", newOrder);
 
@@ -1130,7 +1149,7 @@ export const placeOrder = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: "Order created successfully",
+      message: tokenBillNumber ? "Token bill order completed successfully" : "Order created successfully",
       order: newOrder
     });
 
@@ -1146,56 +1165,235 @@ export const placeOrder = async (req, res) => {
 
 
 export const getOrders = async (req, res) => {
-    try {
-        const {
-            status,
-            page = 1,
-            limit = 10
-        } = req.query;
+  try {
+    const {
+      status,
+      page = 1,
+      limit = 10,
+      date,
+      startDate,
+      endDate
+    } = req.query;
 
-        const filter = {};
+    const filter = {};
 
-        // 🔥 Automatically logged-in user ka restaurant
-        filter.restaurant = req.user.restaurant;
+    // Automatically logged-in user ka restaurant
+    filter.restaurant = req.user.restaurant;
 
-        if (status) filter.orderStatus = status;
+    const statusU = status ? status.toUpperCase() : null;
 
-        const skip = (Number(page) - 1) * Number(limit);
+    if (statusU) filter.orderStatus = statusU;
 
-        const orders = await Order.find(filter)
-            .populate("table", "tableNumber status")
-            .populate("createdBy", "name email")
-            .populate("restaurant", "name")
-            .sort({ createdAt: -1 })
-            .skip(skip)
-            .limit(Number(limit));
+    // Add date filtering for today's orders
+    if (date) {
+      const startDate = new Date(date);
+      const endDate = new Date(date);
+      endDate.setDate(endDate.getDate() + 1); // Next day for range
 
-        const total = await Order.countDocuments(filter);
-
-        return res.json({
-            success: true,
-            totalOrders: total,
-            currentPage: Number(page),
-            totalPages: Math.ceil(total / limit),
-            orders
-        });
-
-    } catch (error) {
-        console.error("Get Orders Error:", error);
-        return res.status(500).json({
-            success: false,
-            message: "Internal Server Error"
-        });
+      filter.createdAt = {
+        $gte: startDate,
+        $lt: endDate
+      };
     }
+
+    // Add date range filtering for monthly orders
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      // Include the entire end date
+      end.setHours(23, 59, 59, 999);
+
+      filter.createdAt = {
+        $gte: start,
+        $lte: end
+      };
+    }
+
+    const skip = (Number(page) - 1) * Number(limit);
+
+    const orders = await Order.find(filter)
+      .populate("table", "tableNumber status")
+      .populate("createdBy", "name email")
+      .populate("restaurant", "name")
+      .sort({ createdAt: -1 })
+      .limit(Number(limit))
+      .skip(skip);
+
+    const total = await Order.countDocuments(filter);
+
+    // Calculate total income from filtered orders
+    const incomeResult = await Order.aggregate([
+      { $match: filter },
+      { $group: { _id: null, totalIncome: { $sum: "$grandTotal" } } }
+    ]);
+    const totalIncome = incomeResult.length > 0 ? incomeResult[0].totalIncome : 0;
+
+    return res.json({
+      success: true,
+      totalOrders: total,
+      totalIncome: totalIncome,
+      currentPage: Number(page),
+      totalPages: Math.ceil(total / limit),
+      orders
+    });
+
+  } catch (error) {
+    console.error("Get Orders Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error"
+    });
+  }
 };
 
+
+
+export const updateOrderDetails = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      restaurant,
+      table,
+      items,
+      orderType,
+      subTotal,
+      taxAmount,
+      grandTotal,
+      customerName,
+      waiterName
+    } = req.body;
+
+    console.log("🔥 Updating order details:", { id, restaurant, table, orderType, customerName });
+    console.log("🔥 Updating order details:", { items });
+
+    // Find the existing order
+    const existingOrder = await Order.findById(id);
+
+    if (!existingOrder) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found"
+      });
+    }
+
+    // Check if order belongs to the user's restaurant
+    if (existingOrder.restaurant.toString() !== req.user.restaurant.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: "You can only update orders from your restaurant"
+      });
+    }
+
+    // Format items similar to placeOrder
+    const formattedItems = [];
+
+    for (const cartItem of items) {
+      const dbItem = await MenuItem.findById(cartItem.itemId);
+      if (!dbItem) continue;
+
+      const formattedVariants = [];
+
+      if (cartItem.variants?.length) {
+        for (const v of cartItem.variants) {
+          const dbVariant = await Variant.findById(v.variantId);
+          if (!dbVariant) continue;
+
+          formattedVariants.push({
+            variantId: dbVariant._id,
+            name: dbVariant.name,
+            price: dbVariant.price,
+            quantity: v.quantity || 1
+          });
+        }
+      }
+
+      formattedItems.push({
+        itemId: dbItem._id,
+        name: dbItem.name,
+        image: dbItem.image || [],
+        basePrice: dbItem.basePrice,
+        quantity: cartItem.quantity || 1,
+        variants: formattedVariants,
+        totalPrice: cartItem.totalPrice || 0
+      });
+    }
+
+    // Update order fields
+    existingOrder.table = table;
+    existingOrder.orderType = orderType;
+    existingOrder.items = formattedItems;
+    existingOrder.subTotal = Number(subTotal);
+    existingOrder.taxAmount = Number(taxAmount);
+    existingOrder.grandTotal = Number(grandTotal);
+    existingOrder.customerName = customerName || existingOrder.customerName;
+    existingOrder.waiterName = waiterName || existingOrder.waiterName;
+
+    // Save updated order
+    await existingOrder.save();
+
+    // Populate the updated order with related data
+    const updatedOrder = await Order.findById(existingOrder._id)
+      .populate("table", "tableNumber status")
+      .populate("createdBy", "name email")
+      .populate("restaurant", "name");
+
+    // Emit socket event for real-time updates
+    const io = getIO();
+    const roomName = `restaurant_${existingOrder.restaurant.toString()}`;
+
+    console.log("🔥 Emitting orderUpdated event to room:", roomName);
+    io.to(roomName).emit("orderUpdated", updatedOrder);
+
+    return res.json({
+      success: true,
+      message: "Order updated successfully",
+      order: updatedOrder
+    });
+
+  } catch (error) {
+    console.error("Update Order Details Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error"
+    });
+  }
+};
+
+export const getOrderStatusCounts = async (req, res) => {
+  try {
+    // 🔥 Automatically logged-in user ka restaurant
+    const restaurantFilter = { restaurant: req.user.restaurant };
+
+    const statusCounts = {
+      total: await Order.countDocuments(restaurantFilter),
+      new: await Order.countDocuments({ ...restaurantFilter, orderStatus: "NEW" }),
+      preparing: await Order.countDocuments({ ...restaurantFilter, orderStatus: "PREPARING" }),
+      ready: await Order.countDocuments({ ...restaurantFilter, orderStatus: "READY" }),
+      served: await Order.countDocuments({ ...restaurantFilter, orderStatus: "SERVED" }),
+      completed: await Order.countDocuments({ ...restaurantFilter, orderStatus: "COMPLETED" }),
+      cancelled: await Order.countDocuments({ ...restaurantFilter, orderStatus: "CANCELLED" })
+    };
+
+    return res.json({
+      success: true,
+      counts: statusCounts
+    });
+
+  } catch (error) {
+    console.error("Get Order Status Counts Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error"
+    });
+  }
+};
 
 
 export const updatePreparationTime = async (req, res) => {
   try {
     const { id } = req.params;
     const { preparationTime } = req.body;
-    console.log("Bhai mere body me kya kyta aa hrai",req.body)
+    console.log("Bhai mere body me kya kyta aa hrai", req.body)
 
     if (!preparationTime || preparationTime < 0) {
       return res.status(400).json({
@@ -1226,7 +1424,7 @@ export const updatePreparationTime = async (req, res) => {
       preparationTime: preparationTime,
       restaurantId: order.restaurant.toString()
     });
-    
+
     io.to(roomName).emit("preparationTimeUpdated", {
       orderId: order._id,
       preparationTime: preparationTime
@@ -1302,7 +1500,7 @@ export const updateOrderStatus = async (req, res) => {
       newStatus: status,
       restaurantId: order.restaurant.toString()
     });
-    
+
     io.to(roomName).emit("orderUpdated", order);
 
     // Emit to order-specific room (for customer)
@@ -1318,14 +1516,23 @@ export const updateOrderStatus = async (req, res) => {
         .emit("orderUpdated", order);
     }
 
-    // Free table
+    // Free table when order is COMPLETED or CANCELLED
+
     if (
       (status === "COMPLETED" || status === "CANCELLED") &&
       order.table
     ) {
-      await Table.findByIdAndUpdate(order.table, {
-        status: "free"
-      });
+      try {
+        console.log("🔥 Freeing table:", order.table, "for order:", order.orderNumber);
+        const updatedTable = await Table.findByIdAndUpdate(
+          order.table,
+          { status: "free" },
+          { new: true }
+        );
+        console.log("✅ Table updated successfully:", updatedTable?.tableNumber, "status:", updatedTable?.status);
+      } catch (tableError) {
+        console.error("❌ Error updating table status:", tableError);
+      }
     }
 
     return res.json({
@@ -1344,37 +1551,37 @@ export const updateOrderStatus = async (req, res) => {
 };
 
 export const getMyOrder = async (req, res) => {
-    try {
-        const token = req.cookies.orderToken;
+  try {
+    const token = req.cookies.orderToken;
 
-        if (!token) {
-            return res.status(401).json({
-                success: false,
-                message: "No order access"
-            });
-        }
-
-        const order = await Order.findOne({ orderAccessToken: token })
-            .populate("table").populate("restaurant", "name logo");
-
-        if (!order) {
-            return res.status(404).json({
-                success: false,
-                message: "Order not found"
-            });
-        }
-
-        res.json({
-            success: true,
-            order
-        });
-
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: error.message
-        });
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: "No order access"
+      });
     }
+
+    const order = await Order.findOne({ orderAccessToken: token })
+      .populate("table").populate("restaurant", "name logo");
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found"
+      });
+    }
+
+    res.json({
+      success: true,
+      order
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
 };
 
 
@@ -2023,6 +2230,267 @@ export const getMyOrder = async (req, res) => {
 // };
 
 
+// export const downloadInvoice = async (req, res) => {
+//   let browser;
+
+//   try {
+//     const { id } = req.params;
+
+//     const order = await Order.findById(id)
+//       .populate("restaurant")
+//       .populate("table");
+
+//       console.log("Bhai mere Order Kya hai Tera ",order)
+
+//     if (!order) {
+//       return res.status(404).json({ message: "Order not found" });
+//     }
+
+//     // ================= ITEM HTML =================
+//     const itemsHTML = order.items.map((item, index) => {
+
+//       const basePrice = Number(item.basePrice) || 0;
+
+//       const totalQuantity =
+//         item.variants?.reduce((acc, v) => acc + (Number(v.quantity) || 0), 0)
+//         || Number(item.quantity) || 0;
+
+//       const variantsHTML =
+//         item.variants?.map(v => `
+//           <div class="row small">
+//             <div class="indent">
+//               ↳ ${v.name} (x${v.quantity})
+//             </div>
+//             <div>
+//               ₹${(Number(v.price || 0) * Number(v.quantity || 0)).toFixed(2)}
+//             </div>
+//           </div>
+//         `).join("") || "";
+
+//       const itemTotal =
+//         totalQuantity > 0
+//           ? totalQuantity * basePrice
+//           : Number(item.totalPrice) || 0;
+
+//       return `
+//         <div class="item-name">${index + 1}. ${item.name}</div>
+
+//         <div class="row small">
+//           <div>${totalQuantity} x ₹${basePrice.toFixed(2)}</div>
+//           <div>₹${item.variants.length > 0 ? basePrice : itemTotal.toFixed(2)}</div>
+//         </div>
+
+//         ${variantsHTML}
+//         <div class="divider"></div>
+//       `;
+//     }).join("");
+
+//     // ================= HTML TEMPLATE =================
+//     const html = `<!DOCTYPE html>
+//     <html>
+//     <head>
+//       <meta charset="UTF-8" />
+//       <style>
+//         body { font-family: monospace; margin:0; padding:10px; }
+//         .invoice { width:280px; margin:auto; font-size:12px; }
+//         .center { text-align:center; }
+//         .bold { font-weight:bold; }
+//         .divider { border-top:1px dashed #000; margin:6px 0; }
+//         .row { display:flex; justify-content:space-between; }
+//         .item-name { margin-top:6px; font-weight:bold; }
+//         .small { font-size:11px; }
+//         .total { font-weight:bold; font-size:14px; }
+//         .indent { padding-left:10px; }
+//       </style>
+//     </head>
+//     <body>
+//       <div class="invoice">
+
+//         <div class="center bold">
+//           ${order.restaurant?.name || ""}
+//         </div>
+
+//         <div class="center small">
+//         Address:
+//           ${order.restaurant?.address.line1 || ""}, ${order.restaurant?.address.city || ""} - ${order.restaurant?.address.state || ""}, ${order.restaurant?.address.pincode || ""}
+//         </div>
+
+//         <div class="center small">
+//           GSTIN: ${order.restaurant?.gstNumber || "-"}
+//         </div>
+
+//         <div class="divider"></div>
+//         <div class="center bold">TAX INVOICE</div>
+//         <div class="divider"></div>
+
+//         <div class="row">
+//           <div>Invoice #:</div>
+//           <div>${order.orderNumber}</div>
+//         </div>
+//         ${order.tokenBillNumber ? `
+//         <div class="row">
+//           <div>Token #:</div>
+//           <div>${order.tokenBillNumber}</div>
+//         </div>` : ""}
+
+
+//         <div class="row">
+//           <div>Date:</div>
+//           <div>${new Date(order.createdAt).toLocaleDateString()}</div>
+//         </div>
+
+//         <div class="divider"></div>
+
+//         <div class="bold">BILLED TO</div>
+//         <div>${order.orderType || order.customerName || "Walk-in Customer"}</div>
+//         <div class="small">${order.customer?.phone || ""}</div>
+
+//         <div class="divider"></div>
+
+//         ${itemsHTML}
+
+//         <div class="bold center">SUMMARY</div>
+//         <div class="divider"></div>
+
+//         <div class="row">
+//           <div>Taxable Amount</div>
+//           <div>₹${Number(order.subTotal || 0).toFixed(2)}</div>
+//         </div>
+
+//         <div class="row">
+//           <div>Add: GST</div>
+//           <div>₹${Number(order.taxAmount || 0).toFixed(2)}</div>
+//         </div>
+
+//         <div class="divider"></div>
+
+//         <div class="row total">
+//           <div>Grand Total</div>
+//           <div>₹${Number(order.grandTotal || 0).toFixed(2)}</div>
+//         </div>
+
+//         <div class="divider"></div>
+
+//         <div class="center small">
+//            Thank you for choosing us.<br/>
+//   It was our pleasure to serve you.<br/>
+//   We look forward to welcoming you again 🙏
+//         </div>
+//          <div class="center small">
+//           <h3>Easy to Pay Your Bill</h3>
+//           ${order.restaurant?.qrCodeForPayment ? `<img src="../my-app/public/assets/images/categories/${order.restaurant.qrCodeForPayment}" alt="QR Code" width="100" height="100" />` : ""}
+//         </div>
+
+//       </div>
+//     </body>
+//     </html>`;
+
+//     // ================= BROWSER LAUNCH (AUTO DETECT ENV) =================
+//     if (process.env.NODE_ENV === "production") {
+//       //   const chromium = (await import("@sparticuz/chromium")).default;
+//       //   const puppeteerCore = (await import("puppeteer-core")).default;
+
+//       browser = await puppeteerCore.launch({
+//         args: chromium.args,
+//         executablePath: await chromium.executablePath(),
+//         headless: chromium.headless,
+//         defaultViewport: chromium.defaultViewport,
+//       });
+
+//     } else {
+//       const puppeteer = (await import("puppeteer")).default;
+
+//       browser = await puppeteer.launch({
+//         headless: "new",
+//       });
+//     }
+
+//     const page = await browser.newPage();
+
+//     // Enable console logging from page context
+//     page.on('console', msg => console.log('PAGE LOG:', msg.text()));
+//     page.on('pageerror', error => console.log('PAGE ERROR:', error.message));
+
+//     // Set content and wait for all resources (including images) to load
+//     await page.setContent(html, { waitUntil: "networkidle0" });
+
+//     // Debug: Check if QR code path exists in the HTML
+//     const qrCodePath = order.restaurant?.qrCodeForPayment;
+//     console.log('QR Code Path:', qrCodePath);
+//     console.log('Full Image Path:', `../my-app/public/assets/images/categories/${qrCodePath}`);
+
+//     // Check if image element exists in the page
+//     const hasImage = await page.evaluate(() => {
+//       const img = document.querySelector('img[alt="QR Code"]');
+//       return !!img;
+//     });
+//     console.log('Image element exists:', hasImage);
+
+//     // Check if image file actually exists on filesystem
+//     const fs = await import('fs');
+//     const path = await import('path');
+//     const imagePath = path.join(process.cwd(), 'my-app', 'public', 'assets', 'images', 'categories', qrCodePath);
+//     const imageExists = fs.existsSync(imagePath);
+//     console.log('Image file exists at path:', imagePath, imageExists);
+
+//     // If image doesn't exist in categories, check qrcodes folder
+//     let finalImagePath = imagePath;
+//     if (!imageExists && qrCodePath) {
+//       const qrCodePathFull = path.join(process.cwd(), 'my-app', 'public', 'assets', 'images', 'qrcodes', qrCodePath);
+//       const qrCodeExists = fs.existsSync(qrCodePathFull);
+//       console.log('QR Code file exists at path:', qrCodePathFull, qrCodeExists);
+
+//       if (qrCodeExists) {
+//         finalImagePath = qrCodePathFull;
+//         console.log('Using QR Code folder instead of categories');
+//       }
+//     }
+
+//     // Wait for images to load specifically
+//     await page.waitForSelector('img', { timeout: 5000 }).catch(() => {
+//       console.log('No images found or images failed to load');
+//     });
+
+//     // Additional wait for QR code image if present
+//     if (order.restaurant?.qrCodeForPayment) {
+//       await page.waitForFunction(() => {
+//         const img = document.querySelector('img[alt="QR Code"]');
+//         return img && img.complete && img.naturalHeight !== 0;
+//       }, { timeout: 3000 }).catch(() => {
+//         console.log('QR Code image failed to load');
+//       });
+//     }
+
+//     const pdf = await page.pdf({
+//       width: "80mm",
+//       printBackground: true,
+//       margin: {
+//         top: "5mm",
+//         bottom: "5mm",
+//         left: "5mm",
+//         right: "5mm",
+//       },
+//     });
+
+//     await browser.close();
+
+//     res.set({
+//       "Content-Type": "application/pdf",
+//       "Content-Disposition": `attachment; filename=Invoice-${order.orderNumber}.pdf`,
+//     });
+
+//     return res.send(pdf);
+
+//   } catch (error) {
+//     console.error("PDF ERROR:", error);
+//     if (browser) await browser.close();
+//     return res.status(500).json({ message: "Invoice generation failed" });
+//   }
+// };
+
+// import fs from "fs";
+// import path from "path";
+
 export const downloadInvoice = async (req, res) => {
   let browser;
 
@@ -2033,8 +2501,41 @@ export const downloadInvoice = async (req, res) => {
       .populate("restaurant")
       .populate("table");
 
+    console.log("Bhai mere Order Kya hai Tera ", order)
+
     if (!order) {
       return res.status(404).json({ message: "Order not found" });
+    }
+
+    // ================= QR CODE BASE64 CONVERSION =================
+    const getBase64Image = (filePath) => {
+      try {
+        const image = fs.readFileSync(filePath);
+        return `data:image/png;base64,${image.toString("base64")}`;
+      } catch (err) {
+        console.log("Image read error:", err);
+        return null;
+      }
+    };
+
+    const qrFileName = order.restaurant?.qrCodeForPayment;
+    let qrBase64 = "";
+
+    if (qrFileName) {
+      const imagePath = path.join(
+        process.cwd(),
+        "../",
+        "my-app",
+        "public",
+        "assets",
+        "images",
+        "categories",
+        qrFileName
+      );
+
+      console.log("QR Path:", imagePath);
+
+      qrBase64 = getBase64Image(imagePath);
     }
 
     // ================= ITEM HTML =================
@@ -2068,7 +2569,7 @@ export const downloadInvoice = async (req, res) => {
 
         <div class="row small">
           <div>${totalQuantity} x ₹${basePrice.toFixed(2)}</div>
-          <div>₹${itemTotal.toFixed(2)}</div>
+          <div>₹${item.variants.length > 0 ? basePrice : itemTotal.toFixed(2)}</div>
         </div>
 
         ${variantsHTML}
@@ -2102,7 +2603,8 @@ export const downloadInvoice = async (req, res) => {
         </div>
 
         <div class="center small">
-          ${order.restaurant?.address || ""}
+        Address:
+          ${order.restaurant?.address.line1 || ""}, ${order.restaurant?.address.city || ""} - ${order.restaurant?.address.state || ""}, ${order.restaurant?.address.pincode || ""}
         </div>
 
         <div class="center small">
@@ -2117,6 +2619,12 @@ export const downloadInvoice = async (req, res) => {
           <div>Invoice #:</div>
           <div>${order.orderNumber}</div>
         </div>
+        ${order.tokenBillNumber ? `
+        <div class="row">
+          <div>Token #:</div>
+          <div>${order.tokenBillNumber}</div>
+        </div>` : ""}
+
 
         <div class="row">
           <div>Date:</div>
@@ -2126,7 +2634,7 @@ export const downloadInvoice = async (req, res) => {
         <div class="divider"></div>
 
         <div class="bold">BILLED TO</div>
-        <div>${order.customer?.name || "Walk-in Customer"}</div>
+        <div>${order.orderType || order.customerName || "Walk-in Customer"}</div>
         <div class="small">${order.customer?.phone || ""}</div>
 
         <div class="divider"></div>
@@ -2156,18 +2664,27 @@ export const downloadInvoice = async (req, res) => {
         <div class="divider"></div>
 
         <div class="center small">
-          Thank You For Your Business<br/>
-          Visit Again 🙏
-        </div>
+        ${qrBase64
+          ? `<img src="${qrBase64}" width="100" height="100" />`
+          : ""
+        }
+        <h3>Easy to Pay Your Bill</h3>
+      </div>
+              <div class="divider"></div>
 
+      <div class="center small">
+         Thank you for choosing us.<br/>
+It was our pleasure to serve you.<br/>
+We look forward to welcoming you again 🙏
+      </div>
       </div>
     </body>
     </html>`;
 
     // ================= BROWSER LAUNCH (AUTO DETECT ENV) =================
     if (process.env.NODE_ENV === "production") {
-    //   const chromium = (await import("@sparticuz/chromium")).default;
-    //   const puppeteerCore = (await import("puppeteer-core")).default;
+      //   const chromium = (await import("@sparticuz/chromium")).default;
+      //   const puppeteerCore = (await import("puppeteer-core")).default;
 
       browser = await puppeteerCore.launch({
         args: chromium.args,
@@ -2185,7 +2702,78 @@ export const downloadInvoice = async (req, res) => {
     }
 
     const page = await browser.newPage();
+
+    // Enable console logging from page context
+    page.on('console', msg => console.log('PAGE LOG:', msg.text()));
+    page.on('pageerror', error => console.log('PAGE ERROR:', error.message));
+
+    // Set content and wait for all resources (including images) to load
     await page.setContent(html, { waitUntil: "networkidle0" });
+
+    // Debug: Check if QR code path exists in the HTML
+    const qrCodePath = order.restaurant?.qrCodeForPayment;
+    console.log('QR Code Path:', qrCodePath);
+    console.log('Full Image Path:', `../my-app/public/assets/images/categories/${qrCodePath}`);
+
+    // Check if image element exists in page
+    const hasImage = await page.evaluate(() => {
+      const img = document.querySelector('img[alt="QR Code"]');
+      return !!img;
+    });
+    console.log('Image element exists:', hasImage);
+
+    // Check if image file actually exists on filesystem
+    // Try different filename variations
+    let fileName = order.restaurant?.qrCodeForPayment;
+    console.log('Original QR Code Path:', fileName);
+
+    // Remove extension if exists
+    if (fileName && fileName.includes('.')) {
+      fileName = fileName.split('.')[0];
+    }
+
+    const imagePathCheck = path.join(process.cwd(), 'my-app', 'public', 'assets', 'images', 'categories', fileName);
+    const imageExists = fs.existsSync(imagePathCheck);
+    console.log('Image file exists at path:', imagePathCheck, imageExists);
+
+    // If image doesn't exist in categories, check qrcodes folder
+    let finalImagePath = imagePathCheck;
+    if (!imageExists && fileName) {
+      const qrCodePathFull = path.join(process.cwd(), 'my-app', 'public', 'assets', 'images', 'qrcodes', fileName);
+      const qrCodeExists = fs.existsSync(qrCodePathFull);
+      console.log('QR Code file exists at path:', qrCodePathFull, qrCodeExists);
+
+      if (qrCodeExists) {
+        finalImagePath = qrCodePathFull;
+        console.log('Using QR Code folder instead of categories');
+      }
+    }
+
+    // If still not found, try with original path
+    if (!fs.existsSync(finalImagePath) && order.restaurant?.qrCodeForPayment) {
+      const originalPath = path.join(process.cwd(), 'my-app', 'public', 'assets', 'images', 'categories', order.restaurant.qrCodeForPayment);
+      if (fs.existsSync(originalPath)) {
+        finalImagePath = originalPath;
+        console.log('Using original path with extension');
+      }
+    }
+
+    console.log('Final image path:', finalImagePath);
+
+    // Wait for images to load specifically
+    await page.waitForSelector('img', { timeout: 5000 }).catch(() => {
+      console.log('No images found or images failed to load');
+    });
+
+    // Additional wait for QR code image if present
+    if (order.restaurant?.qrCodeForPayment) {
+      await page.waitForFunction(() => {
+        const img = document.querySelector('img[alt="QR Code"]');
+        return img && img.complete && img.naturalHeight !== 0;
+      }, { timeout: 3000 }).catch(() => {
+        console.log('QR Code image failed to load');
+      });
+    }
 
     const pdf = await page.pdf({
       width: "80mm",

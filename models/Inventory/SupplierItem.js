@@ -33,7 +33,12 @@ const supplierItemSchema = new mongoose.Schema({
   isActive: {
     type: Boolean,
     default: true
-  }
+  },
+  defaultPurchasePrice: {
+  type: Number,
+  default: 0
+},
+
 }, { timestamps: true });
 
 export default mongoose.model("SupplierItem", supplierItemSchema);

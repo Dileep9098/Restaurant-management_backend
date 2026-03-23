@@ -60,16 +60,6 @@ const __dirname = path.dirname(__filename);
 //       data: restaurant
 //     });
 
-//   } catch (error) {
-//     console.error("Create Restaurant Error:", error);
-//     res.status(500).json({
-//       success: false,
-//       message: "Server error"
-//     });
-//   }
-// };
-
-
 export const createRestaurant = async (req, res) => {
   try {
     const {
@@ -79,10 +69,12 @@ export const createRestaurant = async (req, res) => {
       email,
       address,
       gstNumber,
-      isActive
+      isActive,
+      serviceType,
     } = req.body;
 
     console.log("Request Body:", req.body);
+    console.log("Uploaded Files:", req.files);
 
     if (!name) {
       return res.status(400).json({
@@ -101,23 +93,37 @@ export const createRestaurant = async (req, res) => {
       }
     }
 
-    // 👇 logo path
-    let logo = null;
-    if (req.file) {
-      logo = `${req.file.filename}`;
+    // Handle file uploads
+    let logoPath = "resLogo.png";
+    let qrCodePath = "qrcodePayment.png";
+
+    if (req.files) {
+      if (req.files.file && req.files.file[0]) {
+        logoPath = req.files.file[0].filename;
+        console.log("Logo uploaded:", logoPath);
+      }
+
+      if (req.files.qrCode && req.files.qrCode[0]) {
+        qrCodePath = req.files.qrCode[0].filename;
+        console.log("QR Code uploaded:", qrCodePath);
+      }
     }
 
-    const restaurant = await Restaurent.create({
+    const restaurant = new Restaurent({
       name,
       outletCode,
       phone,
       email,
-      address,
+      address: typeof address === 'string' ? JSON.parse(address) : address,
       gstNumber,
       isActive,
-      logo, // 👈 save logo
-      createdBy: req.user._id
+      serviceType,
+      logo: logoPath,
+      qrCodeForPayment: qrCodePath,
+      createdBy: req.user.id
     });
+
+    await restaurant.save();
 
     res.status(201).json({
       success: true,
@@ -188,8 +194,6 @@ export const getRestaurantById = async (req, res) => {
  */
 
 
-
-
 export const updateRestaurant = async (req, res) => {
   try {
     const restaurant = await Restaurent.findById(req.params.id);
@@ -208,6 +212,7 @@ export const updateRestaurant = async (req, res) => {
       email,
       gstNumber,
       isActive,
+      serviceType,
     } = req.body;
 
     // address update
@@ -218,8 +223,8 @@ export const updateRestaurant = async (req, res) => {
       pincode: req.body['address[pincode]'] || restaurant.address?.pincode,
     };
 
-    // 🔥 LOGO UPDATE
-    if (req.file) {
+    // LOGO UPDATE
+    if (req.files && req.files.file && req.files.file[0]) {
       // delete old logo
       if (restaurant.logo) {
         const oldPath = path.resolve(`.${restaurant.logo}`);
@@ -228,7 +233,20 @@ export const updateRestaurant = async (req, res) => {
         }
       }
 
-      restaurant.logo = `${req.file.filename}`;
+      restaurant.logo = `${req.files.file[0].filename}`;
+    }
+
+    // QR CODE UPDATE
+    if (req.files && req.files.qrCode && req.files.qrCode[0]) {
+      // delete old QR code
+      if (restaurant.qrCodeForPayment) {
+        const oldQrPath = path.resolve(`.${restaurant.qrCodeForPayment}`);
+        if (fs.existsSync(oldQrPath)) {
+          fs.unlinkSync(oldQrPath);
+        }
+      }
+
+      restaurant.qrCodeForPayment = `${req.files.qrCode[0].filename}`;
     }
 
     restaurant.name = name || restaurant.name;
@@ -236,6 +254,7 @@ export const updateRestaurant = async (req, res) => {
     restaurant.phone = phone || restaurant.phone;
     restaurant.email = email || restaurant.email;
     restaurant.gstNumber = gstNumber || restaurant.gstNumber;
+    restaurant.serviceType = serviceType || restaurant.serviceType;
     restaurant.isActive =
       isActive !== undefined ? isActive : restaurant.isActive;
 
@@ -448,13 +467,13 @@ export const createRestaurantUser = async (req, res) => {
       { upsert: true, new: true }
     );
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    // const hashedPassword = await bcrypt.hash(password, 10);
 
     const user = await User.create({
       name,
       email,
       phone,
-      password: hashedPassword,
+      password,
       role: roleDoc._id,
       restaurant: restaurantId,
       status: status || "active",

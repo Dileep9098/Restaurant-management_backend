@@ -2,6 +2,48 @@
 
 // import mongoose from "mongoose";
 
+// const purchaseItemSchema = new mongoose.Schema({
+//   rawMaterial: {
+//     type: mongoose.Schema.Types.ObjectId,
+//     ref: "RawMaterial",
+//     required: true
+//   },
+
+//   quantity: {
+//     type: Number,
+//     required: true,
+//     min: 0
+//   },
+
+//   pricePerUnit: {
+//     type: Number,
+//     required: true,
+//     min: 0
+//   },
+
+//   taxPercent: {
+//     type: Number,
+//     default: 0
+//   },
+
+//   discount: {
+//     type: Number,
+//     default: 0
+//   },
+
+//   total: {
+//     type: Number,
+//     required: true
+//   },
+
+//   receivedQuantity: {
+//     type: Number,
+//     default: 0
+//   }
+
+// }, { _id: false });
+
+
 // const purchaseSchema = new mongoose.Schema({
 
 //   restaurant: {
@@ -21,33 +63,32 @@
 //     required: true
 //   },
 
-//   purchaseNumber: { type: String, required: true, unique: true },
+//   purchaseNumber: {
+//     type: String,
+//     required: true
+//   },
 
 //   supplierInvoiceNumber: String,
 
-//   purchaseDate: { type: Date, default: Date.now },
+  // extra billing/reference number provided at receive time
+  // billingNumber: String,
+
+//   purchaseDate: {
+//     type: Date,
+//     default: Date.now
+//   },
+
 //   dueDate: Date,
 
-//   items: [
-//     {
-//       rawMaterial: {
-//         type: mongoose.Schema.Types.ObjectId,
-//         ref: "RawMaterial",
-//         required: true
-//       },
-//       quantity: Number,
-//       pricePerUnit: Number,
-//       taxPercent: Number,
-//       discount: Number,
-//       total: Number,
-//       receivedQuantity: { type: Number, default: 0 }
-//     }
-//   ],
+//   items: {
+//     type: [purchaseItemSchema],
+//     validate: v => v.length > 0
+//   },
 
-//   subTotal: Number,
-//   totalTax: Number,
-//   totalDiscount: Number,
-//   totalAmount: Number,
+//   subTotal: { type: Number, default: 0 },
+//   totalTax: { type: Number, default: 0 },
+//   totalDiscount: { type: Number, default: 0 },
+//   totalAmount: { type: Number, default: 0 },
 
 //   paidAmount: { type: Number, default: 0 },
 //   balanceAmount: { type: Number, default: 0 },
@@ -60,38 +101,54 @@
 
 //   status: {
 //     type: String,
-//     enum: ["draft", "approved", "completed", "cancelled"],
+//     enum: [
+//       "draft",
+//       "ordered",
+//       "partially_received",
+//       "received",
+//       "cancelled"
+//     ],
 //     default: "draft"
 //   },
 
-//   approvedBy: {
+//   orderedAt: Date,
+//   receivedAt: Date,
+
+//   createdBy: {
 //     type: mongoose.Schema.Types.ObjectId,
 //     ref: "User"
 //   },
 
 //   notes: String,
 
-//   attachments: [String]
+//   attachments: [String],
+
+//   isActive: {
+//     type: Boolean,
+//     default: true
+//   }
 
 // }, { timestamps: true });
+
+// purchaseSchema.index({ restaurant: 1, purchaseNumber: 1 }, { unique: true });
 
 // export default mongoose.model("Purchase", purchaseSchema);
 
 
 
 
-// Final Schema after refactoring
+
 
 import mongoose from "mongoose";
 
-const purchaseItemSchema = new mongoose.Schema({
+const purchaseOrderItemSchema = new mongoose.Schema({
   rawMaterial: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "RawMaterial",
     required: true
   },
 
-  quantity: {
+  orderedQuantity: {
     type: Number,
     required: true,
     min: 0
@@ -116,17 +173,12 @@ const purchaseItemSchema = new mongoose.Schema({
   total: {
     type: Number,
     required: true
-  },
-
-  receivedQuantity: {
-    type: Number,
-    default: 0
   }
 
 }, { _id: false });
 
 
-const purchaseSchema = new mongoose.Schema({
+const purchaseOrderSchema = new mongoose.Schema({
 
   restaurant: {
     type: mongoose.Schema.Types.ObjectId,
@@ -144,54 +196,38 @@ const purchaseSchema = new mongoose.Schema({
     ref: "Supplier",
     required: true
   },
+  category: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "RawMaterialCategory"
+  },
 
-  purchaseNumber: {
+  poNumber: {
     type: String,
     required: true
   },
 
-  supplierInvoiceNumber: String,
-
-  purchaseDate: {
+  poDate: {
     type: Date,
     default: Date.now
   },
 
-  dueDate: Date,
+  expectedDeliveryDate: Date,
 
   items: {
-    type: [purchaseItemSchema],
+    type: [purchaseOrderItemSchema],
     validate: v => v.length > 0
   },
 
-  subTotal: { type: Number, default: 0 },
-  totalTax: { type: Number, default: 0 },
-  totalDiscount: { type: Number, default: 0 },
-  totalAmount: { type: Number, default: 0 },
-
-  paidAmount: { type: Number, default: 0 },
-  balanceAmount: { type: Number, default: 0 },
-
-  paymentStatus: {
-    type: String,
-    enum: ["pending", "partial", "paid"],
-    default: "pending"
-  },
+  subTotal: Number,
+  totalTax: Number,
+  totalDiscount: Number,
+  totalAmount: Number,
 
   status: {
     type: String,
-    enum: [
-      "draft",
-      "ordered",
-      "partially_received",
-      "received",
-      "cancelled"
-    ],
+    enum: ["draft", "ordered", "partially_received", "received", "cancelled"],
     default: "draft"
   },
-
-  orderedAt: Date,
-  receivedAt: Date,
 
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
@@ -200,8 +236,6 @@ const purchaseSchema = new mongoose.Schema({
 
   notes: String,
 
-  attachments: [String],
-
   isActive: {
     type: Boolean,
     default: true
@@ -209,9 +243,4 @@ const purchaseSchema = new mongoose.Schema({
 
 }, { timestamps: true });
 
-purchaseSchema.index({ restaurant: 1, purchaseNumber: 1 }, { unique: true });
-
-export default mongoose.model("Purchase", purchaseSchema);
-
-
-
+export default mongoose.model("PurchaseOrder", purchaseOrderSchema);

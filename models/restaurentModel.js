@@ -16,7 +16,13 @@ const restaurantSchema = new mongoose.Schema({
   gstNumber: String,
   isActive: { type: Boolean, default: true },
   logo:{ type: String,default:"resLogo.png" },
+  qrCodeForPayment:{ type: String,default:"qrcodePayment.png" },
 
+serviceType: {
+    type: String,
+    enum: ["dine_in", "qsr", "hybrid"],
+    default: "dine_in"
+  },
 
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   invoiceTemplate: {

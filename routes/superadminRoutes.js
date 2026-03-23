@@ -30,13 +30,33 @@ const upload = multer({
   fileFilter
 });
 
+// Separate upload for QR code
+const qrUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      cb(null, "../my-app/public/assets/images/qrcodes");
+    },
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname);
+      cb(null, `${Date.now()}-qrcode${ext}`);
+    }
+  }),
+  fileFilter
+});
+
 
 const router = express.Router();
 
-router.post("/create-restaurent", auth,upload.single("file"), createRestaurant);
+router.post("/create-restaurent", auth,upload.fields([
+  { name: 'file', maxCount: 1 },
+  { name: 'qrCode', maxCount: 1 }
+]), createRestaurant);
 router.get("/get-all-restaurent", auth, getAllRestaurants);
 router.get("/restaurent/:id", auth, getRestaurantById);
-router.put("/update-restaurent/:id", auth,upload.single("file"), updateRestaurant);
+router.put("/update-restaurent/:id", auth,upload.fields([
+  { name: 'file', maxCount: 1 },
+  { name: 'qrCode', maxCount: 1 }
+]), updateRestaurant);
 router.patch("/restaurent/status/:id", auth, toggleRestaurantStatus);
 router.delete("/delete-restaurent/:id", auth, deleteRestaurant);
 

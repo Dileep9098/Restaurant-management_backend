@@ -1,9 +1,25 @@
-import mongoose from "mongoose";
+﻿import mongoose from "mongoose";
 
 import Purchase from "../../models/Inventory/Purchase.js";
+import PurchaseReceive from "../../models/Inventory/PurchaseReceive.js";
 import SupplierItem from "../../models/Inventory/SupplierItem.js";
 import RawMaterial from "../../models/Inventory/RawMaterial.js";
 import InventoryTransaction from "../../models/Inventory/InventoryTransaction.js";
+
+/**
+ * Purchase controller for inventory module
+ *
+ * Endpoints:
+ *  - createPurchase
+ *  - receivePurchase
+ *  - getAllPurchases / getPurchaseById
+ *  - getAllPurchaseReceives / getPurchaseReceiveById
+ *  - updatePurchase
+ *  - deletePurchase
+ *  - markAsOrdered
+ *
+ * Legacy and commented code removed for clarity.
+ */
 
 // export const createPurchase = async (req, res) => {
 
@@ -331,6 +347,7 @@ import InventoryTransaction from "../../models/Inventory/InventoryTransaction.js
 // };
 
 
+
 export const createPurchase = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -338,11 +355,14 @@ export const createPurchase = async (req, res) => {
   try {
     const {
       supplier,
+      category,
       items,
       status = "draft",
       paidAmount = 0,
       purchaseDate,
-      notes
+      notes,
+      supplierInvoiceNumber,
+      billingNumber
     } = req.body;
 
     const restaurantId = req.user.restaurant;
@@ -352,24 +372,36 @@ export const createPurchase = async (req, res) => {
       throw new Error("Supplier and items required");
     }
 
-    // Generate Purchase Number
-    const count = await Purchase.countDocuments({ restaurant: restaurantId });
-    const purchaseNumber = `PUR${String(count + 1).padStart(4, "0")}`;
+    // Normalize category - convert empty string to null
+    const normalizedCategory = category === '' ? null : category;
 
-    // Calculate totals
+    // Generate PO Number
+    const count = await Purchase.countDocuments({ restaurant: restaurantId });
+    const poNumber = `PUR${String(count + 1).padStart(4, "0")}`;
+
+    // Calculate totals (must match frontend calculation)
     let totalAmount = 0;
 
     items.forEach(item => {
-      const lineTotal = item.quantity * item.pricePerUnit;
+      const qty = Number(item.orderedQuantity) || 0;
+      const price = Number(item.pricePerUnit) || 0;
+      const taxPercent = Number(item.taxPercent) || 0;
+      const discount = Number(item.discount) || 0;
+      
+      const lineSubtotal = qty * price;
+      const lineTax = lineSubtotal * (taxPercent / 100);
+      const lineDiscount = lineSubtotal * (discount / 100);
+      const lineTotal = lineSubtotal + lineTax - lineDiscount;
+      
       item.total = lineTotal;
-      item.receivedQuantity = 0; // important
       totalAmount += lineTotal;
     });
 
     const purchase = await Purchase.create([{
       restaurant: restaurantId,
       supplier,
-      purchaseNumber,
+      category: normalizedCategory,
+      poNumber,
       items,
       totalAmount,
       paidAmount,
@@ -377,6 +409,8 @@ export const createPurchase = async (req, res) => {
       status,
       purchaseDate: purchaseDate || new Date(),
       notes,
+      supplierInvoiceNumber,
+      billingNumber,
       createdBy
     }], { session });
 
@@ -408,63 +442,141 @@ export const receivePurchase = async (req, res) => {
       throw new Error("Already received");
     }
 
-    const incomingItems = req.body?.items;
+    // allow additional receive-specific fields
+    const incomingItems = req.body?.items || [];
+    const { supplierInvoiceNumber, billingNumber, receiveNotes ,receivedBy} = req.body || {};
 
-    for (let item of purchase.items) {
-      // determine quantity to receive; default to original quantity
-      let receiveQty = item.quantity;
-      if (Array.isArray(incomingItems)) {
-        const match = incomingItems.find(i => i.rawMaterial?.toString() === item.rawMaterial.toString());
-        if (match && typeof match.quantity === 'number') {
-          receiveQty = match.quantity;
-        }
+    if (!Array.isArray(incomingItems) || incomingItems.length === 0) {
+      throw new Error("Items data required for receiving");
+    }
+
+    // Generate GRN Number
+    const grnCount = await PurchaseReceive.countDocuments({ restaurant: purchase.restaurant });
+    const grnNumber = `GRN${String(grnCount + 1).padStart(5, "0")}`;
+
+    // Prepare receive items and update stock
+    const receiveItems = [];
+    let totalReceivedAmount = 0;
+
+    for (let incomingItem of incomingItems) {
+      const purchaseItem = purchase.items.find(i => 
+        i.rawMaterial.toString() === incomingItem.rawMaterial.toString()
+      );
+      
+      if (!purchaseItem) {
+        throw new Error(`Item ${incomingItem.rawMaterial} not found in purchase`);
       }
-      item.receivedQuantity = receiveQty;
 
-      // Inventory Transaction
-      await InventoryTransaction.create([{
-        restaurant: purchase.restaurant,
-        rawMaterial: item.rawMaterial,
-        type: "PURCHASE",
-        quantity: receiveQty,
-        referenceId: purchase._id,
-        referenceModel: "Purchase",
-        createdBy: req.user._id
-      }], { session });
+      const receivedQty = Number(incomingItem.receivedQuantity) || 0;
+      const damagedQty = Number(incomingItem.damagedQuantity) || 0;
+      const shortQty = Number(incomingItem.shortQuantity) || 0;
+      const price = Number(incomingItem.pricePerUnit) || 0;
 
-      const material = await RawMaterial.findById(item.rawMaterial).session(session);
+      // Create receive item record
+      const receiveItem = {
+        rawMaterial: incomingItem.rawMaterial,
+        orderedQuantity: purchaseItem.orderedQuantity,
+        receivedQuantity: receivedQty,
+        damagedQuantity: damagedQty,
+        shortQuantity: shortQty,
+        unitPrice: price,
+        total: receivedQty * price
+      };
+      receiveItems.push(receiveItem);
+      totalReceivedAmount += receiveItem.total;
 
-      const oldStock = material.currentStock || 0;
-      const oldAvg = material.averageCost || 0;
+      // Update inventory with RECEIVED quantity only
+      if (receivedQty > 0) {
+        await InventoryTransaction.create([{
+          restaurant: purchase.restaurant,
+          rawMaterial: incomingItem.rawMaterial,
+          type: "PURCHASE",
+          quantity: receivedQty,
+          referenceId: purchase._id,
+          referenceModel: "Purchase",
+          createdBy: req.user._id
+        }], { session });
 
-      const newAvg =
-        oldStock > 0
-          ? ((oldAvg * oldStock) + (receiveQty * item.pricePerUnit)) / (oldStock + receiveQty)
-          : item.pricePerUnit;
+        const material = await RawMaterial.findById(incomingItem.rawMaterial).session(session);
+        const oldStock = material.currentStock || 0;
+        const oldAvg = material.averageCost || 0;
 
-      material.currentStock = oldStock + receiveQty;
-      material.averageCost = newAvg;
+        const newAvg =
+          oldStock > 0
+            ? ((oldAvg * oldStock) + (receivedQty * price)) / (oldStock + receivedQty)
+            : price;
 
-      await material.save({ session });
+        material.currentStock = oldStock + receivedQty;
+        material.averageCost = newAvg;
 
+        await material.save({ session });
+      }
+
+      // If damaged, create adjustment transaction (negative)
+      if (damagedQty > 0) {
+        await InventoryTransaction.create([{
+          restaurant: purchase.restaurant,
+          rawMaterial: incomingItem.rawMaterial,
+          type: "DAMAGED",
+          quantity: -damagedQty,
+          referenceId: purchase._id,
+          referenceModel: "Purchase",
+          createdBy: req.user._id,
+          notes: "Damaged during receipt"
+        }], { session });
+      }
+
+      // Update SupplierItem last price
       await SupplierItem.findOneAndUpdate(
-        { restaurant: purchase.restaurant, supplier: purchase.supplier, rawMaterial: item.rawMaterial },
-        { lastPurchasePrice: item.pricePerUnit },
+        { restaurant: purchase.restaurant, supplier: purchase.supplier, rawMaterial: incomingItem.rawMaterial },
+        { lastPurchasePrice: price },
         { upsert: true, session }
       );
     }
 
-    purchase.status = "received";
+    // Create PurchaseReceive record
+    const purchaseReceive = await PurchaseReceive.create([{
+      restaurant: purchase.restaurant,
+      purchaseOrder: purchase._id,
+      grnNumber,
+      supplierInvoiceNumber: supplierInvoiceNumber || undefined,
+      // allow an arbitrary billingNumber field as extra detail
+      billingNumber: billingNumber || undefined,
+      items: receiveItems,
+      totalReceivedAmount,
+      receiveStatus: "completed",
+      receivedBy: receivedBy || "Unknown",
+      receiveDate: new Date(),
+      notes: receiveNotes || "Received from frontend"
+    }], { session });
+
+    // Update purchase status, receivedAt and invoice if provided
+    // purchase.status = "received";
     purchase.receivedAt = purchase.receivedAt || new Date();
+    if (supplierInvoiceNumber !== undefined) {
+      purchase.supplierInvoiceNumber = supplierInvoiceNumber;
+    }
+    if (billingNumber !== undefined) {
+      purchase.billingNumber = billingNumber;
+    }
     await purchase.save({ session });
 
     await session.commitTransaction();
     session.endSession();
 
+    // Populate and return purchase
+    await purchase.populate("supplier", "name phone");
+    await purchase.populate({
+      path: "items.rawMaterial",
+      select: "name purchaseUnit averageCost"
+    });
+
     res.json({
       success: true,
-      message: "Stock received successfully",
-      data: purchase
+      message: `Stock received successfully! GRN: ${grnNumber}` +
+               (supplierInvoiceNumber ? ` | Invoice: ${supplierInvoiceNumber}` : ""),
+      data: purchase,
+      receive: purchaseReceive[0]
     });
 
   } catch (error) {
@@ -484,6 +596,7 @@ export const getAllPurchases = async (req, res) => {
     
     const purchases = await Purchase.find({ restaurant: restaurantId, isActive: true })
       .populate("supplier", "name phone")
+      .populate("category", "name")
       .populate({
         path: "items.rawMaterial",
         select: "name purchaseUnit consumptionUnit averageCost"
@@ -507,6 +620,7 @@ export const getPurchaseById = async (req, res) => {
   try {
     const purchase = await Purchase.findById(req.params.id)
       .populate("supplier", "name phone")
+      .populate("category", "name")
       .populate({
         path: "items.rawMaterial",
         select: "name purchaseUnit consumptionUnit averageCost"
@@ -526,6 +640,56 @@ export const getPurchaseById = async (req, res) => {
 
   } catch (error) {
     console.error("Error fetching purchase:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ------- purchase receive getters -------
+export const getAllPurchaseReceives = async (req, res) => {
+  try {
+    const restaurantId = req.user.restaurant || req.body.restaurant;
+    if (!restaurantId) {
+      return res.status(400).json({ message: "Restaurant ID is required" });
+    }
+
+    const receives = await PurchaseReceive.find({ restaurant: restaurantId, isActive: true })
+      .populate("purchaseOrder", "poNumber supplier status")
+      .populate({
+        path: "items.rawMaterial",
+        select: "name purchaseUnit consumptionUnit averageCost"
+      })
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      count: receives.length,
+      data: receives
+    });
+  } catch (error) {
+    console.error("Error fetching purchase receives:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const getPurchaseReceiveById = async (req, res) => {
+  try {
+    const receive = await PurchaseReceive.findById(req.params.id)
+      .populate("purchaseOrder", "poNumber supplier status")
+      .populate({
+        path: "items.rawMaterial",
+        select: "name purchaseUnit consumptionUnit averageCost"
+      });
+
+    if (!receive) {
+      return res.status(404).json({
+        success: false,
+        message: "Purchase receive record not found"
+      });
+    }
+
+    res.status(200).json({ success: true, data: receive });
+  } catch (error) {
+    console.error("Error fetching purchase receive:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -882,11 +1046,42 @@ export const updatePurchase = async (req, res) => {
     return res.status(404).json({ success: false, message: "Not found" });
   }
 
-  if (purchase.status === "received") {
+  if (purchase.status === "received" || purchase.status === "completed") {
     return res.status(400).json({
       success: false,
-      message: "Cannot edit received purchase"
+      message: "Cannot edit received purchase order"
     });
+  }
+
+  // if items are updated, recalc totals
+  if (req.body.items && Array.isArray(req.body.items)) {
+    let subTotal = 0,
+      totalTax = 0,
+      totalDiscount = 0,
+      totalAmount = 0;
+
+    req.body.items.forEach(item => {
+      const line = (item.orderedQuantity || 0) * (item.pricePerUnit || 0);
+      const tax = line * ((item.taxPercent || 0) / 100);
+      const disc = line * ((item.discount || 0) / 100);
+      const tot = line + tax - disc;
+
+      item.total = tot;
+      subTotal += line;
+      totalTax += tax;
+      totalDiscount += disc;
+      totalAmount += tot;
+    });
+
+    req.body.subTotal = subTotal;
+    req.body.totalTax = totalTax;
+    req.body.totalDiscount = totalDiscount;
+    req.body.totalAmount = totalAmount;
+  }
+
+  // Handle empty category - convert to null to avoid ObjectId cast error
+  if (req.body.category === '') {
+    req.body.category = null;
   }
 
   Object.assign(purchase, req.body);

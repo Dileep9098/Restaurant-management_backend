@@ -18,7 +18,8 @@ export const createSupplierItem = async (req, res) => {
       lastPurchasePrice,
       preferredUnit = "purchase",
       leadTime = 0,
-      minOrderQuantity = 1
+      minOrderQuantity = 1,
+      defaultPurchasePrice = 0
     } = req.body;
 
     if (!supplier || !rawMaterial) {
@@ -50,7 +51,9 @@ export const createSupplierItem = async (req, res) => {
       lastPurchasePrice,
       preferredUnit,
       leadTime,
-      minOrderQuantity
+      minOrderQuantity,
+      defaultPurchasePrice
+      
     });
 
     const populatedItem = await SupplierItem.findById(supplierItem._id)

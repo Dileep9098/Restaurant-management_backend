@@ -2,47 +2,49 @@
 import fs from "fs";
 import path from "path";
 import MenuItem from "../models/menuItemModel.js";
+import VariantGroupModel from "../models/VariantGroupModel.js";
+import varianModel from "../models/varianModel.js";
 
 export const createMenuItem = async (req, res) => {
-    try {
-        if (!req.user || !req.user.restaurant) {
-            return res.status(401).json({ success: false, message: "Unauthorized" });
-        }
-
-        const booleanFields = ["isVeg", "isNonVeg", "hasVariants", "hasAddOns", "isActive"];
-        const sanitizedBody = { ...req.body };
-
-        booleanFields.forEach(field => {
-            if (sanitizedBody[field] !== undefined) {
-                sanitizedBody[field] =
-                    sanitizedBody[field] === "true" ||
-                    sanitizedBody[field] === true ||
-                    sanitizedBody[field] === "on";
-            }
-        });
-
-        const data = {
-            ...sanitizedBody,
-            restaurant: req.user.restaurant,
-            createdBy: req.user._id
-        };
-
-        if (req.files && req.files.length > 0) {
-            data.image = req.files.map(file => file.filename);
-        }
-
-        const menuItem = await MenuItem.create(data);
-
-        res.status(201).json({
-            success: true,
-            message: "Menu item created successfully",
-            data: menuItem
-        });
-
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ success: false, message: "Server Error" });
+  try {
+    if (!req.user || !req.user.restaurant) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
     }
+
+    const booleanFields = ["isVeg", "isNonVeg", "hasVariants", "hasAddOns", "isActive"];
+    const sanitizedBody = { ...req.body };
+
+    booleanFields.forEach(field => {
+      if (sanitizedBody[field] !== undefined) {
+        sanitizedBody[field] =
+          sanitizedBody[field] === "true" ||
+          sanitizedBody[field] === true ||
+          sanitizedBody[field] === "on";
+      }
+    });
+
+    const data = {
+      ...sanitizedBody,
+      restaurant: req.user.restaurant,
+      createdBy: req.user._id
+    };
+
+    if (req.files && req.files.length > 0) {
+      data.image = req.files.map(file => file.filename);
+    }
+
+    const menuItem = await MenuItem.create(data);
+
+    res.status(201).json({
+      success: true,
+      message: "Menu item created successfully",
+      data: menuItem
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: "Server Error" });
+  }
 };
 
 
@@ -55,9 +57,26 @@ export const getMenuItems = async (req, res) => {
       .populate("tax", "name percent")
       .sort({ sortOrder: 1 });
 
+    const variantGroups = await VariantGroupModel.find({
+      restaurant: req.user.restaurant,
+      isActive: true,
+      menuItem: { $in: items.map(i => i._id) }
+    });
+
+    const variants = await varianModel.find({
+      restaurant: req.user.restaurant,
+      isActive: true,
+      variantGroup: { $in: variantGroups.map(vg => vg._id) }
+    });
+
     res.json({
       success: true,
-      data: items
+      data: {
+        items,
+        variantGroups,
+        variants
+      }
+        
     });
   } catch (err) {
     res.status(500).json({
@@ -180,37 +199,37 @@ export const updateMenuItem = async (req, res) => {
 
 
 export const deleteMenuItem = async (req, res) => {
-    try {
-        const menuItem = await MenuItem.findOne({
-            _id: req.params.id,
-            restaurant: req.user.restaurant
-        });
+  try {
+    const menuItem = await MenuItem.findOne({
+      _id: req.params.id,
+      restaurant: req.user.restaurant
+    });
 
-        if (!menuItem) {
-            return res.status(404).json({ success: false, message: "Menu item not found" });
-        }
-
-        // 🔹 Handle multi-image deletion
-        if (menuItem.image && Array.isArray(menuItem.image)) {
-            menuItem.image.forEach(img => {
-                const imagePath = path.resolve("../my-app/public/assets/images/menu", img);
-                if (fs.existsSync(imagePath)) {
-                    fs.unlink(imagePath, err => {
-                        if (err) console.error("Image delete error:", err);
-                    });
-                }
-            });
-        }
-
-        await menuItem.deleteOne();
-
-        res.status(200).json({
-            success: true,
-            message: "Menu item deleted successfully"
-        });
-
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ success: false, message: "Server Error" });
+    if (!menuItem) {
+      return res.status(404).json({ success: false, message: "Menu item not found" });
     }
+
+    // 🔹 Handle multi-image deletion
+    if (menuItem.image && Array.isArray(menuItem.image)) {
+      menuItem.image.forEach(img => {
+        const imagePath = path.resolve("../my-app/public/assets/images/menu", img);
+        if (fs.existsSync(imagePath)) {
+          fs.unlink(imagePath, err => {
+            if (err) console.error("Image delete error:", err);
+          });
+        }
+      });
+    }
+
+    await menuItem.deleteOne();
+
+    res.status(200).json({
+      success: true,
+      message: "Menu item deleted successfully"
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: "Server Error" });
+  }
 };

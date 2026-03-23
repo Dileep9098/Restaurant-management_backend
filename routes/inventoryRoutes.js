@@ -3,8 +3,8 @@ import { createCategory, deleteCategory, getAllCategories, getCategoryById, upda
 import { createRawMaterial, deleteRawMaterial, getAllRawMaterials, getLowStockMaterials, getRawMaterialById, updateRawMaterial } from "../controllers/Inventory/rawMaterialController.js";
 import { createSupplier, deleteSupplier, getAllSuppliers, updateSupplier } from "../controllers/Inventory/supplierController.js";
 import { createSupplierItem, getAllSupplierItems, getItemsBySupplier, getSupplierItemById, getSuppliersByRawMaterial, reactivateSupplierItem, updateSupplierItem, deleteSupplierItem } from "../controllers/Inventory/supplierItemController.js";
-import { createPurchase, getAllPurchases, getPurchaseById, updatePurchase, deletePurchase, markAsOrdered, receivePurchase } from "../controllers/Inventory/purchaseController.js";
-import { createRecipe, deductStockForMenuItem } from "../controllers/Inventory/recipeController.js";
+import { createPurchase, getAllPurchases, getPurchaseById, updatePurchase, deletePurchase, markAsOrdered, receivePurchase, getAllPurchaseReceives, getPurchaseReceiveById } from "../controllers/Inventory/purchaseController.js";
+import { createRecipe, getAllRecipes, getRecipeById, updateRecipe, deleteRecipe, deductStockForMenuItem } from "../controllers/Inventory/recipeController.js";
 import { getInventorySettings, updateInventorySettings } from "../controllers/Inventory/inventorySettingController.js";
 import { createInventoryTransaction, getAllInventoryTransactions, getCurrentStock, addStockAdjustment } from "../controllers/Inventory/inventoryTransactionController.js";
 import auth from "../middleware/auth.js";
@@ -58,10 +58,18 @@ router.delete("/delete-purchase/:id", auth, deletePurchase);
 router.patch("/ordered/:id", auth, markAsOrdered);
 router.patch("/receive/:id", auth, receivePurchase);
 
+// purchase receive records
+router.get("/get-all-purchase-receives", auth, getAllPurchaseReceives);
+router.get("/get-purchase-receive/:id", auth, getPurchaseReceiveById);
+
 
 
 //Recipe Routes
 router.post("/create-recipe", auth, createRecipe);
+router.get("/recipes", auth, getAllRecipes);
+router.get("/recipes/:id", auth, getRecipeById);
+router.put("/recipes/:id", auth, updateRecipe);
+router.delete("/recipes/:id", auth, deleteRecipe);
 router.get("/deduct-stock-for-menu-item", auth, deductStockForMenuItem);
 
 

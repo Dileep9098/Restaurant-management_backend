@@ -122,7 +122,7 @@ export const getCustomerMenu = async (req, res) => {
       .sort({ sortOrder: 1 })
       .populate("restaurant", "name logo");
 
-    
+
     let itemFilter = {
       restaurant,
       isAvailable: true
@@ -137,8 +137,8 @@ export const getCustomerMenu = async (req, res) => {
     // }
 
     if (category && category !== "all") {
-  itemFilter.category = new mongoose.Types.ObjectId(category);
-}
+      itemFilter.category = new mongoose.Types.ObjectId(category);
+    }
 
 
     if (type === "veg") itemFilter.isVeg = true;
@@ -148,7 +148,7 @@ export const getCustomerMenu = async (req, res) => {
 
     const [items, totalItems] = await Promise.all([
       menuItemModel
-        .find(itemFilter).populate("restaurant", "name logo").populate("tax","name percent appliesTo")
+        .find(itemFilter).populate("restaurant", "name logo").populate("tax", "name percent appliesTo")
         .skip(skip)
         .limit(Number(limit))
         .sort({ createdAt: -1 }),
@@ -167,16 +167,16 @@ export const getCustomerMenu = async (req, res) => {
     // });
 
     const variantGroups = await VariantGroupModel.find({
-  restaurant,
-  isActive: true,
-  menuItem: { $in: items.map(i => i._id) }
-});
+      restaurant,
+      isActive: true,
+      menuItem: { $in: items.map(i => i._id) }
+    });
 
-const variants = await varianModel.find({
-  restaurant,
-  isActive: true,
-  variantGroup: { $in: variantGroups.map(vg => vg._id) }
-});
+    const variants = await varianModel.find({
+      restaurant,
+      isActive: true,
+      variantGroup: { $in: variantGroups.map(vg => vg._id) }
+    });
 
 
     res.json({
