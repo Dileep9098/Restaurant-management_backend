@@ -56,7 +56,8 @@ export const createTable = async (req, res) => {
 
     const qrCode = await generateStyledQR({
       url: qrUrl,
-      logoPath: `../my-app/public/assets/images/categories/${restaurantData.logo}`||restaurantData.name, 
+    //   logoPath: `../my-app/public/assets/images/categories/${restaurantData.logo}`||restaurantData.name, 
+      logoPath: `https://restaurant-management-f.vercel.app/assets/images/categories/${restaurantData.logo}`||restaurantData.name, 
       darkColor: "#6B21A8"
     });
 
