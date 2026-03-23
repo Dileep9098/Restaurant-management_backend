@@ -213,7 +213,7 @@ app.use(cors({
   credentials: true,
   origin: function (origin, callback) {
     // const devtunnel = "https://7jq23dd6-5173.inc1.devtunnels.ms";
-    const devtunnel = "https://restaurant-management-f-q3s4.vercel.app";
+    const devtunnel = "https://restaurant-management-f.vercel.app";
     const localhost = "http://localhost:5173";
 
     if (origin === devtunnel || origin === localhost || !origin) {
