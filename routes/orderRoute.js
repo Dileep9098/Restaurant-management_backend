@@ -6,7 +6,7 @@ const router = express.Router();
 
 router.post("/place-order", placeOrder);
 router.get("/get-all-order", auth, getOrders);
-router.get("/get-my-orders", auth, getMyOrder);
+router.get("/get-my-orders", getMyOrder);
 router.get("/get-status-counts", auth, getOrderStatusCounts);
 router.put("/update-order-stauts/:id", auth, updateOrderStatus);
 router.put("/update-order-details/:id", auth, updateOrderDetails);
