@@ -213,11 +213,11 @@ app.use(cors({
   credentials: true,
   origin: function (origin, callback) {
     // const devtunnel = "https://7jq23dd6-5173.inc1.devtunnels.ms";
-    const devtunnel = "https://restaurant-management-f.vercel.app";
+    const frontendUrl = "https://restaurant-management-f.vercel.app";
     const localhost = "http://localhost:5173";
 
-    if (origin === devtunnel || origin === localhost || !origin) {
-      // !origin allows tools like Postman or server-side requests
+    // Allow frontend domain and localhost
+    if (origin === frontendUrl || origin === localhost || !origin) {
       callback(null, origin || localhost);
     } else {
       callback(new Error("Not allowed by CORS"));
