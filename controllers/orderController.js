@@ -1141,10 +1141,11 @@ export const placeOrder = async (req, res) => {
     io.to(roomName).emit("newOrder", newOrder);
 
     res.cookie("orderToken", orderAccessToken, {
+      expires: new Date(Date.now() + process.env.COOKIE_EXPIRE * 24 * 60 * 60 * 1000),
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: process.env.NODE_ENV === 'production' ? "none" : "lax",
-      maxAge: 1000 * 60 * 60 * 3
+      domain: process.env.NODE_ENV === 'production' ? '.vercel.app' : undefined
     });
 
     return res.status(201).json({
@@ -2665,9 +2666,9 @@ export const downloadInvoice = async (req, res) => {
 
         <div class="center small">
         ${qrBase64
-          ? `<img src="${qrBase64}" width="100" height="100" />`
-          : ""
-        }
+        ? `<img src="${qrBase64}" width="100" height="100" />`
+        : ""
+      }
         <h3>Easy to Pay Your Bill</h3>
       </div>
               <div class="divider"></div>
