@@ -212,11 +212,10 @@ app.use(cookieParser());
 app.use(cors({
   credentials: true,
   origin: function (origin, callback) {
-    // const devtunnel = "https://7jq23dd6-5173.inc1.devtunnels.ms";
     const frontendUrl = "https://restaurant-management-f.vercel.app";
     const localhost = "http://localhost:5173";
 
-    // Allow frontend domain and localhost
+    // Only allow frontend domain and localhost
     if (origin === frontendUrl || origin === localhost || !origin) {
       callback(null, origin || localhost);
     } else {
