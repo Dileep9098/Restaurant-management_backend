@@ -989,7 +989,10 @@ export const placeOrder = async (req, res) => {
       tokenBillNumber
     } = req.body;
 
-    const existingToken = req.cookies?.orderToken;
+    const existingToken = req.headers.authorization?.replace("Bearer ", "") || req.cookies?.orderToken;
+    // const existingToken = req.cookies?.orderToken;
+        // let token = req.headers.authorization;
+
 
     if (!restaurant || !items?.length) {
       return res.status(400).json({
@@ -1149,8 +1152,9 @@ export const placeOrder = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: tokenBillNumber ? "Token bill order completed successfully" : "Order created successfully",
-      order: newOrder
+      message: tokenBillNumber ? "Token bill order completed successfully" : "Order created successfully  ",
+      order: newOrder,
+      orderToken: orderAccessToken,
     });
 
   } catch (error) {
@@ -1550,39 +1554,39 @@ export const updateOrderStatus = async (req, res) => {
   }
 };
 
-export const getMyOrder = async (req, res) => {
-  try {
-    const token = req.cookies.orderToken;
+// export const getMyOrder = async (req, res) => {
+//   try {
+//     const token = req.cookies.orderToken;
 
-    if (!token) {
-      return res.status(401).json({
-        success: false,
-        message: "No order access"
-      });
-    }
+//     if (!token) {
+//       return res.status(401).json({
+//         success: false,
+//         message: "No order access"
+//       });
+//     }
 
-    const order = await Order.findOne({ orderAccessToken: token })
-      .populate("table").populate("restaurant", "name logo");
+//     const order = await Order.findOne({ orderAccessToken: token })
+//       .populate("table").populate("restaurant", "name logo");
 
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: "Order not found"
-      });
-    }
+//     if (!order) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Order not found"
+//       });
+//     }
 
-    res.json({
-      success: true,
-      order
-    });
+//     res.json({
+//       success: true,
+//       order
+//     });
 
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
-  }
-};
+//   } catch (error) {
+//     res.status(500).json({
+//       success: false,
+//       message: error.message
+//     });
+//   }
+// };
 
 
 // controllers/invoiceController.js
@@ -2491,6 +2495,55 @@ export const getMyOrder = async (req, res) => {
 // import fs from "fs";
 // import path from "path";
 
+
+
+export const getMyOrder = async (req, res) => {
+  try {
+    let token = req.headers.authorization;
+    console.log("Bhai mere kya seeen hai kuch samjh aaya",req.headers.authorization)
+    
+    if (token) {
+      token = token.replace('Bearer ', '');
+    }
+    
+    if (!token && req.body.orderToken) {
+      token = req.body.orderToken;
+    }
+
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: "No order access token found"
+      });
+    }
+
+    console.log(" getMyOrder received token:", token);
+
+    const order = await Order.findOne({ orderAccessToken: token })
+      .populate("table").populate("restaurant", "name logo");
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found"
+      });
+    }
+
+    res.json({
+      success: true,
+      order
+    });
+
+  } catch (error) {
+    console.error("Get My Order Error:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  } 
+};
+
+
 export const downloadInvoice = async (req, res) => {
   let browser;
 
@@ -2521,24 +2574,66 @@ export const downloadInvoice = async (req, res) => {
     const qrFileName = order.restaurant?.qrCodeForPayment;
     let qrBase64 = "";
 
-    if (qrFileName) {
-      const imagePath = path.join(
-        process.cwd(),
-        "../",
-        "my-app",
-        "public",
-        "assets",
-        "images",
-        "categories",
-        qrFileName
-      );
+    // if (qrFileName) {
+    //   const imagePath = path.join(
+    //     process.cwd(),
+    //     "../",
+    //     "my-app",
+    //     "public",
+    //     "assets",
+    //     "images",
+    //     "categories",
+    //     qrFileName
+    //   );
 
-      console.log("QR Path:", imagePath);
+    //   console.log("QR Path:", imagePath);
 
-      qrBase64 = getBase64Image(imagePath);
-    }
+    //   qrBase64 = getBase64Image(imagePath);
+    // }
 
     // ================= ITEM HTML =================
+    
+
+
+
+    if (qrFileName) {
+      // Use live frontend URL for QR code in production
+      const isProduction = process.env.NODE_ENV === 'production';
+      const imageUrl = isProduction 
+        ? `https://restaurant-management-f.vercel.app/assets/images/categories/${qrFileName}`
+        : `http://localhost:5173/assets/images/categories/${qrFileName}`;
+
+      console.log("QR Code URL:", imageUrl);
+
+      try {
+        // For production, we'll return the URL directly instead of base64
+        // The frontend can handle the URL directly
+        if (isProduction) {
+          qrBase64 = imageUrl;
+        } else {
+          // For local development, read from filesystem
+          const imagePath = path.join(
+            process.cwd(),
+            "../",
+            "my-app",
+            "public",
+            "assets",
+            "images",
+            "categories",
+            qrFileName
+          );
+          
+          console.log("QR Path:", imagePath);
+          qrBase64 = getBase64Image(imagePath);
+        }
+      } catch (err) {
+        console.log("QR Code error:", err);
+        qrBase64 = null;
+      }
+    }
+    
+    
+    
     const itemsHTML = order.items.map((item, index) => {
 
       const basePrice = Number(item.basePrice) || 0;
