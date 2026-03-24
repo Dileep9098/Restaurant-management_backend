@@ -215,7 +215,6 @@ app.use(cors({
     const frontendUrl = "https://restaurant-management-f.vercel.app";
     const localhost = "http://localhost:5173";
 
-    // Only allow frontend domain and localhost
     if (origin === frontendUrl || origin === localhost || !origin) {
       callback(null, origin || localhost);
     } else {
