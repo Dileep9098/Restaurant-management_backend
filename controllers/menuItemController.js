@@ -4,6 +4,11 @@ import path from "path";
 import MenuItem from "../models/menuItemModel.js";
 import VariantGroupModel from "../models/VariantGroupModel.js";
 import varianModel from "../models/varianModel.js";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 
 export const createMenuItem = async (req, res) => {
   try {
