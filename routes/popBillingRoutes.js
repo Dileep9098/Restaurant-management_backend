@@ -4,17 +4,27 @@ import auth from "../middleware/auth.js";
 import checkPermission from "../middleware/checkPermission";
 import multer from "multer";
 import path from "path";
+const __dirname = path.dirname(__filename);
 
 const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
+    // destination: (req, file, cb) => {
         // cb(null, "../my-app/public/assets/images/invoiceTemplate");
-         if (process.env.NODE_ENV === 'development') {
-            cb(null, "../my-app/public/assets/images/invoiceTemplate");
-        } else {
+        //  if (process.env.NODE_ENV === 'development') {
+        //     cb(null, "../my-app/public/assets/images/invoiceTemplate");
+        // } else {
             
-            cb(null, "https://restaurant-management-f.vercel.app/assets/images/invoiceTemplate");
+        //     cb(null, "https://restaurant-management-f.vercel.app/assets/images/invoiceTemplate");
+        // }
+            // cb(null, "../uploads/invoiceTemplate");
+    // },
+     destination: (req, file, cb) => {
+        const uploadPath = path.join(__dirname, '../uploads/invoiceTemplate');
+        // Ensure directory exists
+        if (!fs.existsSync(uploadPath)) {
+          fs.mkdirSync(uploadPath, { recursive: true });
         }
-    },
+        cb(null, uploadPath);
+      },
     filename: (req, file, cb) => {
         const ext = path.extname(file.originalname);
         cb(null, `${Date.now()}-${file.fieldname}${ext}`);

@@ -143,17 +143,18 @@ export const updateMenuItem = async (req, res) => {
           //   img
           // );
           let oldPath;
-          if (process.env.NODE_ENV === 'development') {
-            oldPath = path.resolve(
-              "../my-app/public/assets/images/menu",
-              img
-            );
-          } else {
-            oldPath = path.resolve(
-              "https://restaurant-management-f.vercel.app/assets/images/menu",
-              img
-            );
-          }
+          // if (process.env.NODE_ENV === 'development') {
+          //   oldPath = path.resolve(
+          //     "../my-app/public/assets/images/menu",
+          //     img
+          //   );
+          // } else {
+          //   oldPath = path.resolve(
+          //     "https://restaurant-management-f.vercel.app/assets/images/menu",
+          //     img
+          //   );
+          // }
+          oldPath = path.resolve(__dirname, "../uploads/menu", img);
 
           if (fs.existsSync(oldPath)) {
             fs.unlink(oldPath, err => {
@@ -226,11 +227,12 @@ export const deleteMenuItem = async (req, res) => {
       menuItem.image.forEach(img => {
         // const imagePath = path.resolve("../my-app/public/assets/images/menu", img);
         let imagePath;
-        if (process.env.NODE_ENV === 'development') {
-          imagePath = path.resolve("../my-app/public/assets/images/menu", img);
-        } else {
-          imagePath = path.resolve("https://restaurant-management-f.vercel.app/assets/images/menu", img);
-        }
+        // if (process.env.NODE_ENV === 'development') {
+        //   imagePath = path.resolve("../my-app/public/assets/images/menu", img);
+        // } else {
+        //   imagePath = path.resolve("https://restaurant-management-f.vercel.app/assets/images/menu", img);
+        // }
+        imagePath = path.resolve(__dirname, "../uploads/menu", img);
         if (fs.existsSync(imagePath)) {
           fs.unlink(imagePath, err => {
             if (err) console.error("Image delete error:", err);

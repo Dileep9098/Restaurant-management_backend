@@ -3,13 +3,28 @@ import express from "express";
 import { createRestaurant,getAllRestaurants,getRestaurantById,updateRestaurant,toggleRestaurantStatus,deleteRestaurant, createRestaurantUser, getRestaurantUsers, updateRestaurantUser, deleteRestaurantUser } from "../controllers/restaurentController.js";
 import auth from "../middleware/auth.js";
 import multer from "multer";
-import path from "path";
+import path from "path"
+import { fileURLToPath } from "url";
+import fs from 'fs';
+const __filename = fileURLToPath(import.meta.url);
+
+const __dirname = path.dirname(__filename);
 
 
 
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, "../my-app/public/assets/images/categories");
+  // destination: (req, file, cb) => {
+    // cb(null, "../my-app/public/assets/images/categories");
+    //  path.join(__dirname, '../uploads/categories')
+  // },
+
+ destination: (req, file, cb) => {
+    const uploadPath = path.join(__dirname, '../uploads/categories');
+    // Ensure directory exists
+    if (!fs.existsSync(uploadPath)) {
+      fs.mkdirSync(uploadPath, { recursive: true });
+    }
+    cb(null, uploadPath);
   },
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname);

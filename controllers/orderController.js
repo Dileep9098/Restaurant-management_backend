@@ -5,6 +5,10 @@
 // import { io } from "../server.js";
 import fs from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
+const __filename = fileURLToPath(import.meta.url);
+
+const __dirname = path.dirname(__filename);
 
 
 // const generateOrderNumber = async () => {
@@ -2599,9 +2603,17 @@ export const downloadInvoice = async (req, res) => {
     if (qrFileName) {
       // Use live frontend URL for QR code in production
       const isProduction = process.env.NODE_ENV === 'production';
-      const imageUrl = isProduction 
-        ? `https://restaurant-management-f.vercel.app/assets/images/categories/${qrFileName}`
-        : `http://localhost:5173/assets/images/categories/${qrFileName}`;
+      // const imageUrl = isProduction 
+      //   // ? `https://restaurant-management-f.vercel.app/assets/images/categories/${qrFileName}`
+      //   ? `../uploads/categories/${qrFileName}`
+      //   : `http://localhost:5173/assets/images/categories/${qrFileName}`;
+      // path.resolve(__dirname, "../uploads/categories", restaurantData.logo) || restaurantData.name,
+        const imageUrl = isProduction
+        ?path.join(process.cwd(), "uploads", "categories", qrFileName)
+        :path.join(__dirname,"../uploads", "categories", qrFileName);
+
+
+
 
       console.log("QR Code URL:", imageUrl);
 

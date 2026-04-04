@@ -62,12 +62,13 @@ export const updateBanner = async (req, res) => {
       // 🔥 Delete old file
       if (existingBanner.file) {
         let oldFilePath;
-        if (process.env.NODE_ENV === 'development') {
-          oldFilePath = path.resolve("../my-app/public/assets/images/banner", existingBanner.file);
-        } else {
-          oldFilePath = path.resolve("https://restaurant-management-f.vercel.app/assets/images/banner", existingBanner.file);
+        // if (process.env.NODE_ENV === 'development') {
+        //   oldFilePath = path.resolve("../my-app/public/assets/images/banner", existingBanner.file);
+        // } else {
+        //   oldFilePath = path.resolve("https://restaurant-management-f.vercel.app/assets/images/banner", existingBanner.file);
 
-        }
+        // }
+        oldFilePath = path.resolve(__dirname, "../uploads/banners", existingBanner.file);
 
         console.log("Old Image kya hai", oldFilePath)
         fs.access(oldFilePath, fs.constants.F_OK, err => {
@@ -110,13 +111,14 @@ export const deleteBanner = async (req, res) => {
 
     if (banner.file) {
       // const filePath = path.resolve( __dirname,"../my-app/public/assets/images/banner", banner.file );
-      let filePath;
-        if (process.env.NODE_ENV === 'development') {
-          filePath = path.resolve( __dirname,"../my-app/public/assets/images/banner", banner.file );
-        } else {
-          filePath = path.resolve( __dirname,"https://restaurant-management-f.vercel.app/assets/images/banner", banner.file);
+      // let filePath;
+      //   if (process.env.NODE_ENV === 'development') {
+      //     filePath = path.resolve( __dirname,"../my-app/public/assets/images/banner", banner.file );
+      //   } else {
+      //     filePath = path.resolve( __dirname,"https://restaurant-management-f.vercel.app/assets/images/banner", banner.file);
 
-        }
+      //   }
+    const  filePath = path.resolve(__dirname, "../uploads/banners", banner.file);
 
       fs.access(filePath, fs.constants.F_OK, (err) => {
         if (!err) {
