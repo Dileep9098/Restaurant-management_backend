@@ -189,7 +189,13 @@ export const deleteCategory = async (req, res) => {
         }
 
         if (category.image) {
-            const imagePath = path.resolve( "../my-app/public/assets/images/categories",category.image);
+            // const imagePath = path.resolve("../my-app/public/assets/images/categories", category.image);
+            let imagePath;
+            if (process.env.NODE_ENV === 'development') {
+                imagePath = path.resolve("../my-app/public/assets/images/categories", category.image);
+            } else {
+                imagePath = path.resolve("https://restaurant-management-f.vercel.app/assets/images/categories", category.image);
+            }
 
             if (fs.existsSync(imagePath)) {
                 fs.unlink(imagePath, (err) => {
@@ -238,10 +244,16 @@ export const updateCategory = async (req, res) => {
         // Agar new image upload hui hai
         if (req.file) {
             if (category.image) {
-                const oldImagePath = path.resolve("../my-app/public/assets/images/categories", category.image
-                );
+                // const oldImagePath = path.resolve("../my-app/public/assets/images/categories", category.image);
+                let oldImagePath;
+                if (process.env.NODE_ENV === 'development') {
+                    oldImagePath = path.resolve("../my-app/public/assets/images/categories", category.image);
+                } else {
+                    oldImagePath = path.resolve("https://restaurant-management-f.vercel.app/assets/images/categories", category.image);
+                }
 
-                console.log("Old Image Kya hai",oldImagePath)
+
+                console.log("Old Image Kya hai", oldImagePath)
 
                 if (fs.existsSync(oldImagePath)) {
                     fs.unlink(oldImagePath, (err) => {

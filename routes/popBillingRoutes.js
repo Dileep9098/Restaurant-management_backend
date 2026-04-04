@@ -7,7 +7,13 @@ import path from "path";
 
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null, "../my-app/public/assets/images/invoiceTemplate");
+        // cb(null, "../my-app/public/assets/images/invoiceTemplate");
+         if (process.env.NODE_ENV === 'development') {
+            cb(null, "../my-app/public/assets/images/invoiceTemplate");
+        } else {
+            
+            cb(null, "https://restaurant-management-f.vercel.app/assets/images/invoiceTemplate");
+        }
     },
     filename: (req, file, cb) => {
         const ext = path.extname(file.originalname);

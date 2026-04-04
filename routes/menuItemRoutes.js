@@ -70,7 +70,12 @@ const router = express.Router();
 
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null, "../my-app/public/assets/images/menu");
+        if (process.env.NODE_ENV === 'development') {
+            cb(null, "../my-app/public/assets/images/menu");
+        } else {
+            
+            cb(null, "https://restaurant-management-f.vercel.app/assets/images/menu");
+        }
     },
     filename: (req, file, cb) => {
         const ext = path.extname(file.originalname);

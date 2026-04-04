@@ -76,7 +76,7 @@ export const getMenuItems = async (req, res) => {
         variantGroups,
         variants
       }
-        
+
     });
   } catch (err) {
     res.status(500).json({
@@ -138,10 +138,22 @@ export const updateMenuItem = async (req, res) => {
       // 🔥 delete old images
       if (menuItem.image?.length) {
         menuItem.image.forEach(img => {
-          const oldPath = path.resolve(
-            "../my-app/public/assets/images/menu",
-            img
-          );
+          // const oldPath = path.resolve(
+          //   "../my-app/public/assets/images/menu",
+          //   img
+          // );
+          let oldPath;
+          if (process.env.NODE_ENV === 'development') {
+            oldPath = path.resolve(
+              "../my-app/public/assets/images/menu",
+              img
+            );
+          } else {
+            oldPath = path.resolve(
+              "https://restaurant-management-f.vercel.app/assets/images/menu",
+              img
+            );
+          }
 
           if (fs.existsSync(oldPath)) {
             fs.unlink(oldPath, err => {
@@ -212,7 +224,13 @@ export const deleteMenuItem = async (req, res) => {
     // 🔹 Handle multi-image deletion
     if (menuItem.image && Array.isArray(menuItem.image)) {
       menuItem.image.forEach(img => {
-        const imagePath = path.resolve("../my-app/public/assets/images/menu", img);
+        // const imagePath = path.resolve("../my-app/public/assets/images/menu", img);
+        let imagePath;
+        if (process.env.NODE_ENV === 'development') {
+          imagePath = path.resolve("../my-app/public/assets/images/menu", img);
+        } else {
+          imagePath = path.resolve("https://restaurant-management-f.vercel.app/assets/images/menu", img);
+        }
         if (fs.existsSync(imagePath)) {
           fs.unlink(imagePath, err => {
             if (err) console.error("Image delete error:", err);

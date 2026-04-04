@@ -61,9 +61,14 @@ export const updateBanner = async (req, res) => {
     if (newFile && newFile !== existingBanner.file) {
       // 🔥 Delete old file
       if (existingBanner.file) {
-        const oldFilePath = path.resolve("../my-app/public/assets/images/banner",
-          existingBanner.file
-        );
+        let oldFilePath;
+        if (process.env.NODE_ENV === 'development') {
+          oldFilePath = path.resolve("../my-app/public/assets/images/banner", existingBanner.file);
+        } else {
+          oldFilePath = path.resolve("https://restaurant-management-f.vercel.app/assets/images/banner", existingBanner.file);
+
+        }
+
         console.log("Old Image kya hai", oldFilePath)
         fs.access(oldFilePath, fs.constants.F_OK, err => {
           if (!err) {
@@ -104,11 +109,14 @@ export const deleteBanner = async (req, res) => {
     if (!banner) return res.status(404).json({ message: "Banner not found" });
 
     if (banner.file) {
-      const filePath = path.resolve(
-        __dirname,
-        "../my-app/public/assets/images/banner",
-        banner.file
-      );
+      // const filePath = path.resolve( __dirname,"../my-app/public/assets/images/banner", banner.file );
+      let filePath;
+        if (process.env.NODE_ENV === 'development') {
+          filePath = path.resolve( __dirname,"../my-app/public/assets/images/banner", banner.file );
+        } else {
+          filePath = path.resolve( __dirname,"https://restaurant-management-f.vercel.app/assets/images/banner", banner.file);
+
+        }
 
       fs.access(filePath, fs.constants.F_OK, (err) => {
         if (!err) {

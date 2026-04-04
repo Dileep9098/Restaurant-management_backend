@@ -8,10 +8,10 @@ import { getSidebar } from "../controllers/sidebar.controller.js";
 const router = express.Router();
 
 // Create permission module
-router.post("/create-permission", auth, checkPermission("permissions.create"), createPermission);
+router.post("/create-permission", auth, createPermission);
 router.get("/get-all-permission", auth, getAllPermissions);
-router.put("/update-permission/:id", auth, checkPermission("permissions.update"), updatePermission);
-router.delete("/delete-permission/:id", auth, checkPermission("permissions.delete"), deletePermission);
+router.put("/update-permission/:id", auth, updatePermission);
+router.delete("/delete-permission/:id", auth,  deletePermission);
 router.get("/sidebar", auth, getSidebar);
 
 router.get("/get-all-permission-assign",auth,getAllAssignPermission)
