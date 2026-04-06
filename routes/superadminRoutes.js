@@ -48,9 +48,17 @@ const upload = multer({
 // Separate upload for QR code
 const qrUpload = multer({
   storage: multer.diskStorage({
+    // destination: (req, file, cb) => {
+    //   cb(null, "../my-app/public/assets/images/qrcodes");
+    // },
     destination: (req, file, cb) => {
-      cb(null, "../my-app/public/assets/images/qrcodes");
-    },
+    const uploadPath = path.join(__dirname, '../uploads/categories');
+    // Ensure directory exists
+    if (!fs.existsSync(uploadPath)) {
+      fs.mkdirSync(uploadPath, { recursive: true });
+    }
+    cb(null, uploadPath);
+  },
     filename: (req, file, cb) => {
       const ext = path.extname(file.originalname);
       cb(null, `${Date.now()}-qrcode${ext}`);
