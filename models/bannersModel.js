@@ -15,7 +15,17 @@ const bannerSchema = new mongoose.Schema({
     file: {
         type: String,
         required: true
+    },
+    //    file: {
+    //       url: String,
+    //       public_id: String
+    //     }
+    restaurant: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Restaurant',
+        required: true
     }
+
 }, { timestamps: true });
 
 const Banners = mongoose.model('Banners', bannerSchema);

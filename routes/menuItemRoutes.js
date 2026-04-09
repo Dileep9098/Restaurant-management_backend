@@ -60,12 +60,6 @@ import {
 } from "../controllers/menuItemController.js";
 
 import multer from "multer";
-import path from "path";
-import { fileURLToPath } from "url";
-import fs from 'fs';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 
 const router = express.Router();
@@ -74,20 +68,7 @@ const router = express.Router();
    MULTER CONFIG
 ======================= */
 
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        let uploadPath = path.join(__dirname, '../uploads/menu');
-        // Ensure directory exists
-        if (!fs.existsSync(uploadPath)) {
-            fs.mkdirSync(uploadPath, { recursive: true });
-        }
-        cb(null, uploadPath);
-    },
-    filename: (req, file, cb) => {
-        const ext = path.extname(file.originalname);
-        cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`);
-    }
-});
+const storage = multer.memoryStorage();
 
 const fileFilter = (req, file, cb) => {
     if (file.mimetype.startsWith("image/")) {

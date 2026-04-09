@@ -1095,8 +1095,11 @@ export const placeOrder = async (req, res) => {
     /* ===================================================
        CREATE NEW ORDER
     ==================================================== */
+    console.log("Restaurant ID:", restaurant)
+    console.log("User Restaurant:", req.user?.restaurant || 'Not available')
 
-    const lastOrder = await Order.findOne().sort({ createdAt: -1 });
+    const lastOrder = await Order.findOne({ restaurant: restaurant }).sort({ createdAt: -1 });
+    console.log("Last Order for this restaurant:", lastOrder?.orderNumber)
 
     let nextNumber = 1;
     if (lastOrder?.orderNumber) {
@@ -2565,87 +2568,20 @@ export const downloadInvoice = async (req, res) => {
     }
 
     // ================= QR CODE BASE64 CONVERSION =================
-    const getBase64Image = (filePath) => {
-      try {
-        const image = fs.readFileSync(filePath);
-        return `data:image/png;base64,${image.toString("base64")}`;
-      } catch (err) {
-        console.log("Image read error:", err);
-        return null;
-      }
-    };
-
     const qrFileName = order.restaurant?.qrCodeForPayment;
     let qrBase64 = "";
 
-    // if (qrFileName) {
-    //   const imagePath = path.join(
-    //     process.cwd(),
-    //     "../",
-    //     "my-app",
-    //     "public",
-    //     "assets",
-    //     "images",
-    //     "categories",
-    //     qrFileName
-    //   );
-
-    //   console.log("QR Path:", imagePath);
-
-    //   qrBase64 = getBase64Image(imagePath);
-    // }
-
-    // ================= ITEM HTML =================
-    
-
-
-
-    if (qrFileName) {
-      // Use live frontend URL for QR code in production
-      const isProduction = process.env.NODE_ENV === 'production';
-      // const imageUrl = isProduction 
-      //   // ? `https://restaurant-management-f.vercel.app/assets/images/categories/${qrFileName}`
-      //   ? `../uploads/categories/${qrFileName}`
-      //   : `http://localhost:5173/assets/images/categories/${qrFileName}`;
-      // path.resolve(__dirname, "../uploads/categories", restaurantData.logo) || restaurantData.name,
-        const imageUrl = isProduction
-        ?path.join(process.cwd(), "uploads", "categories", qrFileName)
-        :path.join(__dirname,"../uploads", "categories", qrFileName);
-
-
-
-
-      console.log("QR Code URL:", imageUrl);
-
-      try {
-        // For production, we'll return the URL directly instead of base64
-        // The frontend can handle the URL directly
-        if (isProduction) {
-          qrBase64 = imageUrl;
-        } else {
-          // For local development, read from filesystem
-          const imagePath = path.join(
-            process.cwd(),
-            "../",
-            "my-app",
-            "public",
-            "assets",
-            "images",
-            "categories",
-            qrFileName
-          );
-          
-          console.log("QR Path:", imagePath);
-          qrBase64 = getBase64Image(imagePath);
-        }
-      } catch (err) {
-        console.log("QR Code error:", err);
-        qrBase64 = null;
+    // Simple QR code handling - use Cloudinary URL if available
+    if (qrFileName && qrFileName !== "qrcodePayment.png") {
+      if (typeof qrFileName === 'string' && qrFileName.includes("cloudinary")) {
+        qrBase64 = qrFileName;
+        console.log("Using Cloudinary QR code URL:", qrBase64);
+      } else {
+        console.log("QR code is not a Cloudinary URL, skipping:", qrFileName);
       }
     }
     
-    
-    
+    // ================= ITEM HTML =================
     const itemsHTML = order.items.map((item, index) => {
 
       const basePrice = Number(item.basePrice) || 0;
@@ -2661,7 +2597,7 @@ export const downloadInvoice = async (req, res) => {
               ↳ ${v.name} (x${v.quantity})
             </div>
             <div>
-              ₹${(Number(v.price || 0) * Number(v.quantity || 0)).toFixed(2)}
+              ₹${(Number(v.price || basePrice) * Number(v.quantity || 0)).toFixed(2)}
             </div>
           </div>
         `).join("") || "";
@@ -2814,72 +2750,12 @@ We look forward to welcoming you again 🙏
     page.on('console', msg => console.log('PAGE LOG:', msg.text()));
     page.on('pageerror', error => console.log('PAGE ERROR:', error.message));
 
-    // Set content and wait for all resources (including images) to load
-    await page.setContent(html, { waitUntil: "networkidle0" });
+    // Set content and wait for basic rendering (faster than networkidle0)
+    await page.setContent(html, { waitUntil: "domcontentloaded" });
 
-    // Debug: Check if QR code path exists in the HTML
-    const qrCodePath = order.restaurant?.qrCodeForPayment;
-    console.log('QR Code Path:', qrCodePath);
-    console.log('Full Image Path:', `../my-app/public/assets/images/categories/${qrCodePath}`);
-
-    // Check if image element exists in page
-    const hasImage = await page.evaluate(() => {
-      const img = document.querySelector('img[alt="QR Code"]');
-      return !!img;
-    });
-    console.log('Image element exists:', hasImage);
-
-    // Check if image file actually exists on filesystem
-    // Try different filename variations
-    let fileName = order.restaurant?.qrCodeForPayment;
-    console.log('Original QR Code Path:', fileName);
-
-    // Remove extension if exists
-    if (fileName && fileName.includes('.')) {
-      fileName = fileName.split('.')[0];
-    }
-
-    const imagePathCheck = path.join(process.cwd(), 'my-app', 'public', 'assets', 'images', 'categories', fileName);
-    const imageExists = fs.existsSync(imagePathCheck);
-    console.log('Image file exists at path:', imagePathCheck, imageExists);
-
-    // If image doesn't exist in categories, check qrcodes folder
-    let finalImagePath = imagePathCheck;
-    if (!imageExists && fileName) {
-      const qrCodePathFull = path.join(process.cwd(), 'my-app', 'public', 'assets', 'images', 'qrcodes', fileName);
-      const qrCodeExists = fs.existsSync(qrCodePathFull);
-      console.log('QR Code file exists at path:', qrCodePathFull, qrCodeExists);
-
-      if (qrCodeExists) {
-        finalImagePath = qrCodePathFull;
-        console.log('Using QR Code folder instead of categories');
-      }
-    }
-
-    // If still not found, try with original path
-    if (!fs.existsSync(finalImagePath) && order.restaurant?.qrCodeForPayment) {
-      const originalPath = path.join(process.cwd(), 'my-app', 'public', 'assets', 'images', 'categories', order.restaurant.qrCodeForPayment);
-      if (fs.existsSync(originalPath)) {
-        finalImagePath = originalPath;
-        console.log('Using original path with extension');
-      }
-    }
-
-    console.log('Final image path:', finalImagePath);
-
-    // Wait for images to load specifically
-    await page.waitForSelector('img', { timeout: 5000 }).catch(() => {
-      console.log('No images found or images failed to load');
-    });
-
-    // Additional wait for QR code image if present
-    if (order.restaurant?.qrCodeForPayment) {
-      await page.waitForFunction(() => {
-        const img = document.querySelector('img[alt="QR Code"]');
-        return img && img.complete && img.naturalHeight !== 0;
-      }, { timeout: 3000 }).catch(() => {
-        console.log('QR Code image failed to load');
-      });
+    // Brief wait for Cloudinary images if present (using setTimeout instead of waitForTimeout)
+    if (qrBase64 && qrBase64.includes("cloudinary")) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
     }
 
     const pdf = await page.pdf({

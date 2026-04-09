@@ -6,6 +6,7 @@ import fs from "fs";
 
 import path from "path";
 import { fileURLToPath } from "url";
+import { v2 as cloudinary } from "cloudinary";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -75,6 +76,7 @@ export const createRestaurant = async (req, res) => {
 
     console.log("Request Body:", req.body);
     console.log("Uploaded Files:", req.files);
+    console.log("User:", req.user);
 
     if (!name) {
       return res.status(400).json({
@@ -93,19 +95,31 @@ export const createRestaurant = async (req, res) => {
       }
     }
 
-    // Handle file uploads
-    let logoPath = "resLogo.png";
-    let qrCodePath = "qrcodePayment.png";
+    // Handle file uploads to Cloudinary
+    let logoUrl = "resLogo.png";
+    let qrCodeUrl = "qrcodePayment.png";
 
     if (req.files) {
       if (req.files.file && req.files.file[0]) {
-        logoPath = req.files.file[0].filename;
-        console.log("Logo uploaded:", logoPath);
+        // Upload from memory buffer to Cloudinary
+        const logoResult = await cloudinary.uploader.upload(
+          `data:image/jpeg;base64,${req.files.file[0].buffer.toString('base64')}`, {
+          folder: "restaurant-logos",
+          resource_type: "image"
+        });
+        logoUrl = logoResult.secure_url;
+        console.log("Logo uploaded to Cloudinary:", logoUrl);
       }
 
       if (req.files.qrCode && req.files.qrCode[0]) {
-        qrCodePath = req.files.qrCode[0].filename;
-        console.log("QR Code uploaded:", qrCodePath);
+        // Upload from memory buffer to Cloudinary
+        const qrResult = await cloudinary.uploader.upload(
+          `data:image/jpeg;base64,${req.files.qrCode[0].buffer.toString('base64')}`, {
+          folder: "restaurant-qrcodes",
+          resource_type: "image"
+        });
+        qrCodeUrl = qrResult.secure_url;
+        console.log("QR Code uploaded to Cloudinary:", qrCodeUrl);
       }
     }
 
@@ -118,9 +132,9 @@ export const createRestaurant = async (req, res) => {
       gstNumber,
       isActive,
       serviceType,
-      logo: logoPath,
-      qrCodeForPayment: qrCodePath,
-      createdBy: req.user.id
+      logo: logoUrl,
+      qrCodeForPayment: qrCodeUrl,
+      createdBy: req.user?._id || req.user?.id
     });
 
     await restaurant.save();
@@ -139,7 +153,6 @@ export const createRestaurant = async (req, res) => {
     });
   }
 };
-
 
 export const getAllRestaurants = async (req, res) => {
   try {
@@ -215,6 +228,9 @@ export const updateRestaurant = async (req, res) => {
       serviceType,
     } = req.body;
 
+    console.log("Update Request Body:", req.body);
+    console.log("Update Request Files:", req.files);
+
     // address update
     restaurant.address = {
       line1: req.body['address[line1]'] || restaurant.address?.line1,
@@ -225,28 +241,66 @@ export const updateRestaurant = async (req, res) => {
 
     // LOGO UPDATE
     if (req.files && req.files.file && req.files.file[0]) {
-      // delete old logo
-      if (restaurant.logo) {
-        const oldPath = path.resolve(`.${restaurant.logo}`);
-        if (fs.existsSync(oldPath)) {
-          fs.unlinkSync(oldPath);
+      console.log("=== LOGO UPDATE DEBUG ===");
+      console.log("Current restaurant logo:", restaurant.logo);
+      console.log("Logo type:", typeof restaurant.logo);
+      console.log("Logo !== default:", restaurant.logo !== "resLogo.png");
+      console.log("Logo includes cloudinary:", restaurant.logo.includes("cloudinary"));
+      
+      // Delete old logo from Cloudinary if it's not default
+      if (restaurant.logo && restaurant.logo !== "resLogo.png" && typeof restaurant.logo === 'string') {
+        if (restaurant.logo.includes("cloudinary")) {
+          const publicId = restaurant.logo.split('/').pop().split('.')[0];
+          console.log("Extracted publicId:", publicId);
+          try {
+            await cloudinary.uploader.destroy(`restaurant-logos/${publicId}`);
+            console.log("Old logo deleted from Cloudinary:", publicId);
+          } catch (err) {
+            console.warn("Failed to delete old logo from Cloudinary:", err);
+          }
         }
       }
 
-      restaurant.logo = `${req.files.file[0].filename}`;
+      // Upload new logo to Cloudinary
+      const logoResult = await cloudinary.uploader.upload(
+        `data:image/jpeg;base64,${req.files.file[0].buffer.toString('base64')}`, {
+        folder: "restaurant-logos",
+        resource_type: "image"
+      });
+      restaurant.logo = logoResult.secure_url;
+      console.log("New logo uploaded to Cloudinary:", logoResult.secure_url);
+      console.log("========================");
     }
 
     // QR CODE UPDATE
     if (req.files && req.files.qrCode && req.files.qrCode[0]) {
-      // delete old QR code
-      if (restaurant.qrCodeForPayment) {
-        const oldQrPath = path.resolve(`.${restaurant.qrCodeForPayment}`);
-        if (fs.existsSync(oldQrPath)) {
-          fs.unlinkSync(oldQrPath);
+      console.log("=== QR CODE UPDATE DEBUG ===");
+      console.log("Current restaurant QR code:", restaurant.qrCodeForPayment);
+      console.log("QR code type:", typeof restaurant.qrCodeForPayment);
+      console.log("QR code !== default:", restaurant.qrCodeForPayment !== "qrcodePayment.png");
+      console.log("QR code includes cloudinary:", restaurant.qrCodeForPayment.includes("cloudinary"));
+      
+      // Delete old QR code from Cloudinary if it's not default
+      if (restaurant.qrCodeForPayment && restaurant.qrCodeForPayment !== "qrcodePayment.png" && typeof restaurant.qrCodeForPayment === 'string') {
+        if (restaurant.qrCodeForPayment.includes("cloudinary")) {
+          const publicId = restaurant.qrCodeForPayment.split('/').pop().split('.')[0];
+          try {
+            await cloudinary.uploader.destroy(`restaurant-qrcodes/${publicId}`);
+            console.log("Old QR code deleted from Cloudinary:", publicId);
+          } catch (err) {
+            console.warn("Failed to delete old QR code from Cloudinary:", err);
+          }
         }
       }
 
-      restaurant.qrCodeForPayment = `${req.files.qrCode[0].filename}`;
+      // Upload new QR code to Cloudinary
+      const qrResult = await cloudinary.uploader.upload(
+        `data:image/jpeg;base64,${req.files.qrCode[0].buffer.toString('base64')}`, {
+        folder: "restaurant-qrcodes",
+        resource_type: "image"
+      });
+      restaurant.qrCodeForPayment = qrResult.secure_url;
+      console.log("New QR code uploaded to Cloudinary:", qrResult.secure_url);
     }
 
     restaurant.name = name || restaurant.name;
@@ -274,6 +328,7 @@ export const updateRestaurant = async (req, res) => {
     });
   }
 };
+
 
 
 /**
@@ -321,18 +376,33 @@ export const deleteRestaurant = async (req, res) => {
       });
     }
 
-    if (restaurant.logo) {
-      const logoPath = path.join(__dirname, "../", restaurant.logo); 
-
-      if (fs.existsSync(logoPath)) {
-        fs.unlinkSync(logoPath);
-        console.log("Restaurant logo deleted successfully:", logoPath);
-      } else {
-        console.warn("Logo file not found for deletion:", logoPath);
+    // Delete logo from Cloudinary if it's not default
+    if (restaurant.logo && restaurant.logo !== "resLogo.png" && typeof restaurant.logo === 'string') {
+      if (restaurant.logo.includes("cloudinary")) {
+        const publicId = restaurant.logo.split('/').pop().split('.')[0];
+        try {
+          await cloudinary.uploader.destroy(`restaurant-logos/${publicId}`);
+          console.log("Restaurant logo deleted from Cloudinary:", publicId);
+        } catch (err) {
+          console.warn("Failed to delete logo from Cloudinary:", err);
+        }
       }
     }
 
-      await restaurant.deleteOne();
+    // Delete QR code from Cloudinary if it's not default
+    if (restaurant.qrCodeForPayment && restaurant.qrCodeForPayment !== "qrcodePayment.png" && typeof restaurant.qrCodeForPayment === 'string') {
+      if (restaurant.qrCodeForPayment.includes("cloudinary")) {
+        const publicId = restaurant.qrCodeForPayment.split('/').pop().split('.')[0];
+        try {
+          await cloudinary.uploader.destroy(`restaurant-qrcodes/${publicId}`);
+          console.log("Restaurant QR code deleted from Cloudinary:", publicId);
+        } catch (err) {
+          console.warn("Failed to delete QR code from Cloudinary:", err);
+        }
+      }
+    }
+
+    await restaurant.deleteOne();
 
     res.status(200).json({
       success: true,
@@ -347,6 +417,7 @@ export const deleteRestaurant = async (req, res) => {
     });
   }
 };
+
 
 
 // export const createRestaurantUser = async (req, res) => {

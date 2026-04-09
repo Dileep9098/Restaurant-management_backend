@@ -106,6 +106,10 @@ export const generateStyledQR = async ({
   const canvas = createCanvas(size, size);
   const ctx = canvas.getContext("2d");
 
+  
+  console.log("Hello bhai mere qr ke details  URL",url)
+  console.log("Hello bhai mere qr ke details  URL",logoPath)
+  console.log("Hello bhai mere qr ke details  URL",centerText)
   // 1️⃣ Generate QR (high quality)
   await QRCode.toCanvas(canvas, url, {
     errorCorrectionLevel: "H",
@@ -129,8 +133,20 @@ export const generateStyledQR = async ({
 
   // 3️⃣ Logo OR Text
   if (logoPath) {
-    const logo = await loadImage(logoPath);
-    ctx.drawImage(logo, x + 15, y + 15, boxSize - 30, boxSize - 30);
+    try {
+      console.log("Attempting to load logo from:", logoPath);
+      const logo = await loadImage(logoPath);
+      ctx.drawImage(logo, x + 15, y + 15, boxSize - 30, boxSize - 30);
+      console.log("Logo loaded successfully");
+    } catch (logoError) {
+      console.warn("Failed to load logo, using fallback text:", logoError.message);
+      // Fallback to center text if logo loading fails
+      ctx.fillStyle = darkColor;
+      ctx.font = "bold 22px Arial";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(centerText || "QR", size / 2, size / 2);
+    }
   } else if (centerText) {
     ctx.fillStyle = darkColor;
     ctx.font = "bold 22px Arial";

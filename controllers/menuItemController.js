@@ -5,6 +5,7 @@ import MenuItem from "../models/menuItemModel.js";
 import VariantGroupModel from "../models/VariantGroupModel.js";
 import varianModel from "../models/varianModel.js";
 import { fileURLToPath } from "url";
+import { v2 as cloudinary } from "cloudinary";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -18,7 +19,7 @@ export const createMenuItem = async (req, res) => {
 
     const booleanFields = ["isVeg", "isNonVeg", "hasVariants", "hasAddOns", "isActive"];
     const sanitizedBody = { ...req.body };
-
+  
     booleanFields.forEach(field => {
       if (sanitizedBody[field] !== undefined) {
         sanitizedBody[field] =
@@ -35,7 +36,17 @@ export const createMenuItem = async (req, res) => {
     };
 
     if (req.files && req.files.length > 0) {
-      data.image = req.files.map(file => file.filename);
+      const uploadPromises = req.files.map(file =>
+        cloudinary.uploader.upload(
+          `data:image/jpeg;base64,${file.buffer.toString('base64')}`, {
+          folder: "menu-items",
+          resource_type: "image",
+          public_id: `menu-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+        })
+      );
+      const uploadResults = await Promise.all(uploadPromises);
+      data.image = uploadResults.map(result => result.secure_url);
+      console.log("Menu item images uploaded to Cloudinary:", uploadResults.map(r => r.secure_url));
     }
 
     const menuItem = await MenuItem.create(data);
@@ -119,7 +130,6 @@ export const getMenuItemById = async (req, res) => {
 
 
 
-
 export const updateMenuItem = async (req, res) => {
   try {
     const menuItem = await MenuItem.findOne({
@@ -139,38 +149,35 @@ export const updateMenuItem = async (req, res) => {
     ========================= */
 
     if (req.files && req.files.length > 0) {
-
-      // 🔥 delete old images
-      if (menuItem.image?.length) {
-        menuItem.image.forEach(img => {
-          // const oldPath = path.resolve(
-          //   "../my-app/public/assets/images/menu",
-          //   img
-          // );
-          let oldPath;
-          // if (process.env.NODE_ENV === 'development') {
-          //   oldPath = path.resolve(
-          //     "../my-app/public/assets/images/menu",
-          //     img
-          //   );
-          // } else {
-          //   oldPath = path.resolve(
-          //     "https://restaurant-management-f.vercel.app/assets/images/menu",
-          //     img
-          //   );
-          // }
-          oldPath = path.resolve(__dirname, "../uploads/menu", img);
-
-          if (fs.existsSync(oldPath)) {
-            fs.unlink(oldPath, err => {
-              if (err) console.error("Image delete error:", err);
-            });
+      // Store old images for deletion
+      const oldImages = menuItem.image || [];
+      
+      // Delete old images from Cloudinary
+      if (oldImages.length > 0) {
+        const deletePromises = oldImages.map(imgUrl => {
+          if (imgUrl.includes("cloudinary")) {
+            const publicId = imgUrl.split('/').pop().split('.')[0];
+            return cloudinary.uploader.destroy(`menu-items/${publicId}`);
           }
-        });
+        }).filter(Boolean);
+        await Promise.all(deletePromises);
+        console.log("Old menu item images deleted from Cloudinary");
       }
 
-      // ✅ save new images
-      menuItem.image = req.files.map(file => file.filename);
+      // Upload new images to Cloudinary
+      const uploadPromises = req.files.map(file =>
+        cloudinary.uploader.upload(
+          `data:image/jpeg;base64,${file.buffer.toString('base64')}`, {
+          folder: "menu-items",
+          resource_type: "image",
+          public_id: `menu-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+        })
+      );
+      const uploadResults = await Promise.all(uploadPromises);
+      
+      // Replace images completely (not add to existing)
+      menuItem.image = uploadResults.map(result => result.secure_url);
+      console.log("New menu item images uploaded to Cloudinary:", uploadResults.map(r => r.secure_url));
     }
 
     /* =========================
@@ -227,23 +234,16 @@ export const deleteMenuItem = async (req, res) => {
       return res.status(404).json({ success: false, message: "Menu item not found" });
     }
 
-    // 🔹 Handle multi-image deletion
+    // 🔹 Handle multi-image deletion from Cloudinary
     if (menuItem.image && Array.isArray(menuItem.image)) {
-      menuItem.image.forEach(img => {
-        // const imagePath = path.resolve("../my-app/public/assets/images/menu", img);
-        let imagePath;
-        // if (process.env.NODE_ENV === 'development') {
-        //   imagePath = path.resolve("../my-app/public/assets/images/menu", img);
-        // } else {
-        //   imagePath = path.resolve("https://restaurant-management-f.vercel.app/assets/images/menu", img);
-        // }
-        imagePath = path.resolve(__dirname, "../uploads/menu", img);
-        if (fs.existsSync(imagePath)) {
-          fs.unlink(imagePath, err => {
-            if (err) console.error("Image delete error:", err);
-          });
+      const deletePromises = menuItem.image.map(img => {
+        if (img.includes("cloudinary")) {
+          const publicId = img.split('/').pop().split('.')[0];
+          return cloudinary.uploader.destroy(`menu-items/${publicId}`);
         }
-      });
+      }).filter(Boolean);
+      await Promise.all(deletePromises);
+      console.log("Menu item images deleted from Cloudinary");
     }
 
     await menuItem.deleteOne();

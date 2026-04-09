@@ -10,27 +10,8 @@ const __filename = fileURLToPath(import.meta.url);
 
 const __dirname = path.dirname(__filename);
 
-
-
-const storage = multer.diskStorage({
-  // destination: (req, file, cb) => {
-    // cb(null, "../my-app/public/assets/images/categories");
-    //  path.join(__dirname, '../uploads/categories')
-  // },
-
- destination: (req, file, cb) => {
-    const uploadPath = path.join(__dirname, '../uploads/categories');
-    // Ensure directory exists
-    if (!fs.existsSync(uploadPath)) {
-      fs.mkdirSync(uploadPath, { recursive: true });
-    }
-    cb(null, uploadPath);
-  },
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `${Date.now()}-${file.fieldname}${ext}`);
-  }
-});
+// Memory storage for direct Cloudinary upload
+const storage = multer.memoryStorage();
 
 const fileFilter = (req, file, cb) => {
   if (file.mimetype.startsWith("image/")) {
@@ -42,35 +23,43 @@ const fileFilter = (req, file, cb) => {
 
 const upload = multer({
   storage,
-  fileFilter
-});
-
-// Separate upload for QR code
-const qrUpload = multer({
-  storage: multer.diskStorage({
-    // destination: (req, file, cb) => {
-    //   cb(null, "../my-app/public/assets/images/qrcodes");
-    // },
-    destination: (req, file, cb) => {
-    const uploadPath = path.join(__dirname, '../uploads/categories');
-    // Ensure directory exists
-    if (!fs.existsSync(uploadPath)) {
-      fs.mkdirSync(uploadPath, { recursive: true });
-    }
-    cb(null, uploadPath);
-  },
-    filename: (req, file, cb) => {
-      const ext = path.extname(file.originalname);
-      cb(null, `${Date.now()}-qrcode${ext}`);
-    }
-  }),
-  fileFilter
+  fileFilter,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+  }
 });
 
 
 const router = express.Router();
 
-router.post("/create-restaurent", auth,upload.fields([
+// Add middleware for parsing form data
+router.use(express.json());
+router.use(express.urlencoded({ extended: true }));
+
+// Add debugging middleware
+// router.use((req, res, next) => {
+//   console.log("=== DEBUG MIDDLEWARE ===");
+//   console.log("Content-Type:", req.get('Content-Type'));
+//   console.log("Request headers:", req.headers);
+//   console.log("Request body keys:", Object.keys(req.body || {}));
+//   console.log("Request files keys:", Object.keys(req.files || {}));
+//   console.log("========================");
+//   next();
+// });
+
+// Add multer error handler
+router.use((error, req, res, next) => {
+  if (error instanceof multer.MulterError) {
+    console.error("Multer Error:", error);
+    return res.status(400).json({
+      success: false,
+      message: "File upload error: " + error.message
+    });
+  }
+  next(error);
+});
+
+router.post("/create-restaurent", upload.fields([
   { name: 'file', maxCount: 1 },
   { name: 'qrCode', maxCount: 1 }
 ]), createRestaurant);

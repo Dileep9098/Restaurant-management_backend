@@ -1,7 +1,11 @@
 import Table from "../models/tableModel.js";
 import {  generateStyledQR, } from "../utils/generateQRCode.js";
 import Restaurant from "../models/restaurentModel.js";
+import path from "path";
+import { fileURLToPath } from "url";
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 // export const createTable = async (req, res) => {
 //     try {
 //         const { restaurant, tableNumber, capacity } = req.body;
@@ -42,23 +46,31 @@ import Restaurant from "../models/restaurentModel.js";
 
 export const createTable = async (req, res) => {
   try {
-    const { restaurant, tableNumber } = req.body;
+    const { restaurant, tableNumber,capacity,qrColorPreset,status,
+} = req.body;
 
     const table = await Table.create({
       restaurant,
-      tableNumber
+      tableNumber,capacity,qrColorPreset,status,
     });
 
     const restaurantData = await Restaurant.findById(restaurant);
-    console.log("helosfjsjkdf usjdfhusjdfsdk",restaurantData)
+    console.log("Restaurant data:", restaurantData);
 
     const qrUrl = `${process.env.FRONTEND_URL}/menu?restaurant=${restaurant}&table=${table._id}`;
 
+    // Use Cloudinary URL directly if available, otherwise use restaurant name
+    let logoPath = restaurantData.name; // default fallback
+    if (restaurantData.logo && 
+        restaurantData.logo !== "resLogo.png" && 
+        typeof restaurantData.logo === 'string' && 
+        restaurantData.logo.includes("cloudinary")) {
+      logoPath = restaurantData.logo; // Use Cloudinary URL directly
+    }
+
     const qrCode = await generateStyledQR({
       url: qrUrl,
-    //   logoPath: `../my-app/public/assets/images/categories/${restaurantData.logo}`||restaurantData.name, 
-    //   logoPath: `https://restaurant-management-f.vercel.app/assets/images/categories/${restaurantData.logo}`||restaurantData.name, 
-        logoPath: path.resolve(__dirname, "../uploads/categories", restaurantData.logo) || restaurantData.name,
+      logoPath: logoPath,
       darkColor: "#6B21A8"
     });
 

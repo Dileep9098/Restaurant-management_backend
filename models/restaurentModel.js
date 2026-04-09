@@ -15,8 +15,9 @@ const restaurantSchema = new mongoose.Schema({
 
   gstNumber: String,
   isActive: { type: Boolean, default: true },
-  logo:{ type: String,default:"resLogo.png" },
-  qrCodeForPayment:{ type: String,default:"qrcodePayment.png" },
+  // logo:{ type: String,default:"resLogo.png" },
+  logo: { type: String, default: "resLogo.png" },
+  qrCodeForPayment: { type: String, default: "qrcodePayment.png" },
 
 serviceType: {
     type: String,
