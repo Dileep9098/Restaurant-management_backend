@@ -1,6 +1,6 @@
 import express from "express";
 
-import { createRestaurant,getAllRestaurants,getRestaurantById,updateRestaurant,toggleRestaurantStatus,deleteRestaurant, createRestaurantUser, getRestaurantUsers, updateRestaurantUser, deleteRestaurantUser } from "../controllers/restaurentController.js";
+import { createRestaurant,getAllRestaurants,getRestaurantById,updateRestaurant,toggleRestaurantStatus,deleteRestaurant, createRestaurantUser, getRestaurantUsers, updateRestaurantUser, deleteRestaurantUser, updateRestaurantUserProfile } from "../controllers/restaurentController.js";
 import auth from "../middleware/auth.js";
 import multer from "multer";
 import path from "path"
@@ -76,5 +76,6 @@ router.post("/create-restaurent-admin", auth, createRestaurantUser);
 router.get("/get-all-admin-restaurent", auth, getRestaurantUsers);
 router.put("/update-restaurent-admin/:id", auth, updateRestaurantUser);
 router.delete("/delete-restaurent-admin/:id", auth, deleteRestaurantUser);
+router.put("/update-restaurent-admin-profile/:id", auth, updateRestaurantUserProfile);
 
 export default router;

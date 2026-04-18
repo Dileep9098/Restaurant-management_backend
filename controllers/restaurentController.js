@@ -246,7 +246,7 @@ export const updateRestaurant = async (req, res) => {
       console.log("Logo type:", typeof restaurant.logo);
       console.log("Logo !== default:", restaurant.logo !== "resLogo.png");
       console.log("Logo includes cloudinary:", restaurant.logo.includes("cloudinary"));
-      
+
       // Delete old logo from Cloudinary if it's not default
       if (restaurant.logo && restaurant.logo !== "resLogo.png" && typeof restaurant.logo === 'string') {
         if (restaurant.logo.includes("cloudinary")) {
@@ -279,7 +279,7 @@ export const updateRestaurant = async (req, res) => {
       console.log("QR code type:", typeof restaurant.qrCodeForPayment);
       console.log("QR code !== default:", restaurant.qrCodeForPayment !== "qrcodePayment.png");
       console.log("QR code includes cloudinary:", restaurant.qrCodeForPayment.includes("cloudinary"));
-      
+
       // Delete old QR code from Cloudinary if it's not default
       if (restaurant.qrCodeForPayment && restaurant.qrCodeForPayment !== "qrcodePayment.png" && typeof restaurant.qrCodeForPayment === 'string') {
         if (restaurant.qrCodeForPayment.includes("cloudinary")) {
@@ -304,11 +304,11 @@ export const updateRestaurant = async (req, res) => {
     }
 
     restaurant.name = name || restaurant.name;
-    restaurant.outletCode = outletCode || restaurant.outletCode;
+    restaurant.outletCode = outletCode ||restaurant.outletCode;
     restaurant.phone = phone || restaurant.phone;
-    restaurant.email = email || restaurant.email;
-    restaurant.gstNumber = gstNumber || restaurant.gstNumber;
-    restaurant.serviceType = serviceType || restaurant.serviceType;
+    restaurant.email = email ||restaurant.email;
+    restaurant.gstNumber = gstNumber ||restaurant.gstNumber;
+    restaurant.serviceType = serviceType ||restaurant.serviceType;
     restaurant.isActive =
       isActive !== undefined ? isActive : restaurant.isActive;
 
@@ -674,8 +674,7 @@ export const updateRestaurantUser = async (req, res) => {
     if (name) updateData.name = name;
     if (email) updateData.email = email;
     if (phone !== undefined) updateData.phone = phone;
-    if (password) updateData.password = await bcrypt.hash(password, 10);
-    if (restaurantId) updateData.restaurant = restaurantId;
+        if (restaurantId) updateData.restaurant = restaurantId;
     if (finalRoleId) updateData.role = finalRoleId;
     if (status) updateData.status = status;
     if (isVerified !== undefined) updateData.isVerified = !!isVerified;
@@ -719,3 +718,32 @@ export const deleteRestaurantUser = async (req, res) => {
     });
   }
 };
+
+export const updateRestaurantUserProfile = async (req, res) => {
+  try {
+    const { moduleData, permissions } = req.body || {};
+    const {
+      name, email, phone, password, oldPassword,
+      restaurantId, role: roleName, status, isVerified
+    } = moduleData || {};
+
+
+    console.log("Module data",moduleData)
+ 
+    
+    const updatedUser = await User.findByIdAndUpdate(req.params.id, updateData, { new: true })
+      .populate("restaurant", "name outletCode")
+      .populate("role", "name")
+      .populate("createdBy", "name email");
+
+    return res.status(200).json({
+      success: true,
+      message: "Restaurant user updated successfully",
+      data: updatedUser
+    });
+
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+   
