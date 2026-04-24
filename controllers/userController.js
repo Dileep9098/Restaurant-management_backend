@@ -148,8 +148,9 @@ export const login = async (req, res) => {
       return res.status(403).json({
         success: false,
         message: "Please Enter Email & Password"
-      });
+      });     
     }
+    console.log("Hello bhai mere ,", email, password)
 
     const user = await User.findOne({ email }).populate("role");
 
@@ -612,7 +613,7 @@ export const getPendingKYCUsers = async (req, res) => {
 
 
 export const createAdminUser = async (req, res) => {
-  const { name, email, password, status, isVerified, role ,restaurant } = req.body;
+  const { name, email, password, status, isVerified, role, restaurant } = req.body;
   console.log(req.body)
 
   try {
@@ -635,7 +636,7 @@ export const createAdminUser = async (req, res) => {
       status,
       isVerified,
       role,
-      restaurant:restaurant
+      restaurant: restaurant
     });
 
     res.status(200).json({
@@ -654,7 +655,7 @@ export const createAdminUser = async (req, res) => {
 };
 
 
-    
+
 // Update User Role Permission
 
 export const updateRolePermission = async (req, res) => {

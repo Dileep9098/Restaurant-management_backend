@@ -169,6 +169,7 @@ import customerMenuRoute from "./routes/customerMenuRoutes.js";
 import OrderRoute from "./routes/orderRoute.js"
 import InventoryRoute from "./routes/inventoryRoutes.js"
 import posRoutes from "./routes/posRoutes.js"
+import expense from "./routes/expenseRoutes.js"
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -254,6 +255,7 @@ app.use("/api/v1", customerMenuRoute)
 app.use("/api/v1", OrderRoute)
 app.use("/api/v1", InventoryRoute)
 app.use("/api/v1/pos", posRoutes)
+app.use("/api/v1", expense)
 
 // app.get('*', (req, res) => {
 //   res.sendFile(path.resolve(__dirname, "bulk-message", "dist", "index.html"));
